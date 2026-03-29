@@ -1,10 +1,91 @@
 import os
+from math import isfinite
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from flask import Flask, render_template, jsonify, request
 
 from app.db import db, migrate
 from app.models import Item, Store
+
+
+MAX_REQUEST_BYTES = 16 * 1024
+MAX_ITEM_NAME_LENGTH = 255
+
+
+def error_response(message, status_code):
+    return jsonify({'error': message}), status_code
+
+
+def get_json_body():
+    if not request.is_json:
+        return None, error_response('request must be JSON', 415)
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None, error_response('invalid JSON body', 400)
+
+    return data, None
+
+
+def normalize_text_field(value, field_name, max_length, *, required=False):
+    if value is None:
+        if required:
+            return None, error_response(f'{field_name} is required', 400)
+        return None, None
+
+    normalized = str(value).strip()
+    if not normalized:
+        if required:
+            return None, error_response(f'{field_name} is required', 400)
+        return None, None
+
+    if len(normalized) > max_length:
+        return None, error_response(f'{field_name} must be at most {max_length} characters', 400)
+
+    return normalized, None
+
+
+def parse_quantity(value):
+    if value is None:
+        return 1, None
+
+    try:
+        quantity = float(value)
+    except (TypeError, ValueError):
+        return None, error_response('quantity must be a finite number', 400)
+
+    if not isfinite(quantity):
+        return None, error_response('quantity must be a finite number', 400)
+
+    if quantity < 0:
+        return None, error_response('quantity must be greater than or equal to 0', 400)
+
+    return quantity, None
+
+
+def parse_checked(value):
+    if isinstance(value, bool):
+        return value, None
+
+    return None, error_response('checked must be a boolean', 400)
+
+
+def parse_store_id(value):
+    if value in (None, ''):
+        return None, None
+
+    try:
+        store_id = int(value)
+    except (TypeError, ValueError):
+        return None, error_response('store_id must be an integer or null', 400)
+
+    if store_id <= 0:
+        return None, error_response('store_id must be an integer or null', 400)
+
+    if db.session.get(Store, store_id) is None:
+        return None, error_response('store_id must reference an existing store', 400)
+
+    return store_id, None
 
 
 def parse_price(value):
@@ -31,6 +112,9 @@ def create_app(config_overrides=None):
             f"{os.environ.get('DB_NAME','appdb')}"
         ),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE='Lax',
     )
     if config_overrides:
         app.config.update(config_overrides)
@@ -55,6 +139,13 @@ def create_app(config_overrides=None):
     def index():
         return render_template('index.html')
 
+    @app.after_request
+    def apply_security_headers(response):
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        response.headers['X-Frame-Options'] = 'DENY'
+        response.headers['Referrer-Policy'] = 'same-origin'
+        return response
+
     @app.route('/api/items', methods=['GET'])
     def api_items_list():
         items = Item.query.order_by(Item.name.asc(), Item.id.asc()).all()
@@ -62,15 +153,36 @@ def create_app(config_overrides=None):
 
     @app.route('/api/items', methods=['POST'])
     def api_items_create():
-        data = request.get_json(force=True)
-        if not data or not str(data.get('name', '')).strip():
-            return jsonify({'error': 'name is required'}), 400
+        data, error = get_json_body()
+        if error:
+            return error
+
+        name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
+        if error:
+            return error
+
+        quantity, error = parse_quantity(data.get('quantity'))
+        if error:
+            return error
+
+        unit, error = normalize_text_field(data.get('unit'), 'unit', 30)
+        if error:
+            return error
+
+        category, error = normalize_text_field(data.get('category'), 'category', 60)
+        if error:
+            return error
+
+        store_id, error = parse_store_id(data.get('store_id'))
+        if error:
+            return error
+
         item = Item(
-            name=data['name'].strip(),
-            quantity=data.get('quantity', 1),
-            unit=data.get('unit'),
-            category=data.get('category'),
-            store_id=data.get('store_id'),
+            name=name,
+            quantity=quantity,
+            unit=unit,
+            category=category,
+            store_id=store_id,
             price=parse_price(data.get('price')),
         )
         db.session.add(item)
@@ -80,10 +192,40 @@ def create_app(config_overrides=None):
     @app.route('/api/items/<int:item_id>', methods=['PATCH'])
     def api_items_update(item_id):
         item = Item.query.get_or_404(item_id)
-        data = request.get_json(force=True) or {}
-        for field in ('name', 'quantity', 'unit', 'category', 'checked', 'store_id'):
-            if field in data:
-                setattr(item, field, data[field])
+        data, error = get_json_body()
+        if error:
+            return error
+
+        if 'name' in data:
+            item.name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
+            if error:
+                return error
+
+        if 'quantity' in data:
+            item.quantity, error = parse_quantity(data.get('quantity'))
+            if error:
+                return error
+
+        if 'unit' in data:
+            item.unit, error = normalize_text_field(data.get('unit'), 'unit', 30)
+            if error:
+                return error
+
+        if 'category' in data:
+            item.category, error = normalize_text_field(data.get('category'), 'category', 60)
+            if error:
+                return error
+
+        if 'checked' in data:
+            item.checked, error = parse_checked(data.get('checked'))
+            if error:
+                return error
+
+        if 'store_id' in data:
+            item.store_id, error = parse_store_id(data.get('store_id'))
+            if error:
+                return error
+
         if 'price' in data:
             item.price = parse_price(data['price'])
         db.session.commit()
@@ -103,13 +245,16 @@ def create_app(config_overrides=None):
 
     @app.route('/api/stores', methods=['POST'])
     def api_stores_create():
-        data = request.get_json(force=True)
-        if not data or not str(data.get('name', '')).strip():
-            return jsonify({'error': 'name is required'}), 400
-        name = data['name'].strip()
-        # Check if store already exists
+        data, error = get_json_body()
+        if error:
+            return error
+
+        name, error = normalize_text_field(data.get('name'), 'name', 100, required=True)
+        if error:
+            return error
+
         if Store.query.filter_by(name=name).first():
-            return jsonify({'error': 'Store already exists'}), 409
+            return error_response('Store already exists', 409)
         store = Store(name=name)
         db.session.add(store)
         db.session.commit()
@@ -118,13 +263,16 @@ def create_app(config_overrides=None):
     @app.route('/api/stores/<int:store_id>', methods=['PATCH'])
     def api_stores_update(store_id):
         store = Store.query.get_or_404(store_id)
-        data = request.get_json(force=True) or {}
+        data, error = get_json_body()
+        if error:
+            return error
+
         if 'name' in data:
-            new_name = str(data['name']).strip()
-            if not new_name:
-                return jsonify({'error': 'name is required'}), 400
+            new_name, error = normalize_text_field(data.get('name'), 'name', 100, required=True)
+            if error:
+                return error
             if new_name != store.name and Store.query.filter_by(name=new_name).first():
-                return jsonify({'error': 'Store name already exists'}), 409
+                return error_response('Store name already exists', 409)
             store.name = new_name
         db.session.commit()
         return jsonify({'id': store.id, 'name': store.name})

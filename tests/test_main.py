@@ -60,6 +60,62 @@ def test_items_api_rejects_missing_name(client):
     assert response.get_json() == {'error': 'name is required'}
 
 
+def test_items_api_rejects_non_json_requests(client):
+    response = client.post('/api/items', data='name=Apples', content_type='application/x-www-form-urlencoded')
+
+    assert response.status_code == 415
+    assert response.get_json() == {'error': 'request must be JSON'}
+
+
+def test_items_api_rejects_invalid_store_reference(client):
+    response = client.post(
+        '/api/items',
+        json={
+            'name': 'Apples',
+            'store_id': 999,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'store_id must reference an existing store'}
+
+
+def test_items_api_rejects_invalid_quantity_on_update(client, app):
+    with app.app_context():
+        item = Item(name='Milk', price=Decimal('3.99'))
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    response = client.patch(
+        f'/api/items/{item_id}',
+        json={
+            'quantity': 'not-a-number',
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'quantity must be a finite number'}
+
+
+def test_items_api_rejects_blank_name_on_update(client, app):
+    with app.app_context():
+        item = Item(name='Milk', price=Decimal('3.99'))
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    response = client.patch(
+        f'/api/items/{item_id}',
+        json={
+            'name': '   ',
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {'error': 'name is required'}
+
+
 def test_items_api_updates_fields_and_normalizes_negative_price(client, app):
     with app.app_context():
         item = Item(name='Milk', price=Decimal('3.99'))
@@ -106,6 +162,22 @@ def test_stores_api_prevents_duplicate_names(client):
     assert first_response.status_code == 201
     assert duplicate_response.status_code == 409
     assert duplicate_response.get_json() == {'error': 'Store already exists'}
+
+
+def test_stores_api_rejects_non_json_requests(client):
+    response = client.post('/api/stores', data='name=Corner Market', content_type='application/x-www-form-urlencoded')
+
+    assert response.status_code == 415
+    assert response.get_json() == {'error': 'request must be JSON'}
+
+
+def test_security_headers_are_set_on_html_responses(client):
+    response = client.get('/')
+
+    assert response.status_code == 200
+    assert response.headers['X-Content-Type-Options'] == 'nosniff'
+    assert response.headers['X-Frame-Options'] == 'DENY'
+    assert response.headers['Referrer-Policy'] == 'same-origin'
 
 
 def test_deleting_store_clears_store_id_from_items(client, app):
