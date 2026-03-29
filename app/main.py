@@ -22,14 +22,18 @@ def parse_price(value):
     return price.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
-def create_app():
+def create_app(config_overrides=None):
     app = Flask(__name__, template_folder='templates')
-    app.config['SQLALCHEMY_DATABASE_URI'] = (
-        f"postgresql://{os.environ.get('DB_USER','devuser')}:{os.environ.get('DB_PASSWORD','devpass')}@"
-        f"{os.environ.get('DB_HOST','db')}:{os.environ.get('DB_PORT','5432')}/"
-        f"{os.environ.get('DB_NAME','appdb')}"
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI=(
+            f"postgresql://{os.environ.get('DB_USER','devuser')}:{os.environ.get('DB_PASSWORD','devpass')}@"
+            f"{os.environ.get('DB_HOST','db')}:{os.environ.get('DB_PORT','5432')}/"
+            f"{os.environ.get('DB_NAME','appdb')}"
+        ),
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
     )
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    if config_overrides:
+        app.config.update(config_overrides)
 
     db.init_app(app)
     migrate.init_app(app, db)
