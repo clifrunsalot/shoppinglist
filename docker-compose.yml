@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: devuser
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: appdb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      FLASK_APP: app.main
+      FLASK_DEBUG: 1
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
+volumes:
+  db_data:

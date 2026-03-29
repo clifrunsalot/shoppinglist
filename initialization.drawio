@@ -1,0 +1,160 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.7.17 Chrome/128.0.6613.36 Electron/32.0.1 Safari/537.36" version="24.7.17">
+  <diagram name="Page-1" id="RoF_b_dOE58OrbtOWaGz">
+    <mxGraphModel dx="1246" dy="661" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-1" value="Docker Compose" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="20" y="20" width="150" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-2" value="Postgres" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="248" y="20" width="150" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-3" value="Web container" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="448" y="20" width="150" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-4" value="Flask (`create_app()`)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="671" y="20" width="182" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-5" value="SQLAlchemy (`app/db.py`)" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="1004" y="20" width="217" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-6" value="Flask-Migrate" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="1271" y="20" width="150" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-7" value="Browser / Client" style="shape=umlLifeline;perimeter=lifelinePerimeter;whiteSpace=wrap;container=1;dropTarget=0;collapsible=0;recursiveResize=0;outlineConnect=0;portConstraint=eastwest;newEdgeStyle={&quot;edgeStyle&quot;:&quot;elbowEdgeStyle&quot;,&quot;elbow&quot;:&quot;vertical&quot;,&quot;curved&quot;:0,&quot;rounded&quot;:0};size=65;" vertex="1" parent="1">
+          <mxGeometry x="1471" y="20" width="150" height="1114" as="geometry" />
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-8" value="start Postgres service" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-1" target="xwpOA2KrBjkbyRzQtdvz-2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="218" y="123" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-9" value="run db/init/init.sql (seed on first init)" style="curved=1;dashed=1;dashPattern=2 3;endArrow=block;rounded=0;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-2" target="xwpOA2KrBjkbyRzQtdvz-2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="374" y="171" />
+              <mxPoint x="374" y="201" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-10" value="start web container (build/run Flask app)" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-1" target="xwpOA2KrBjkbyRzQtdvz-3">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="318" y="249" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-11" value="start / call create_app()" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-3" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="651" y="297" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-12" value="db.init_app(app)" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="946" y="345" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-13" value="migrate.init_app(app)" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-6">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1062" y="393" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-14" value="register routes/templates (`app/main.py`)" style="curved=1;endArrow=block;rounded=0;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="813" y="441" />
+              <mxPoint x="813" y="471" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-15" value="establish DB connection" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="554" y="519" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-16" value="connection ready" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;dashed=1;dashPattern=2 3;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-2" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="551" y="567" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-17" value="GET /" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-7" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1165" y="615" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-18" value="render index using `app/templates/index.html`" style="curved=1;endArrow=block;rounded=0;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="813" y="663" />
+              <mxPoint x="813" y="693" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-19" value="HTML response" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;dashed=1;dashPattern=2 3;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1162" y="741" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-20" value="GET /api/items" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-7" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1165" y="789" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-21" value="query `Item` model (`app/models.py`)" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="946" y="837" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-22" value="execute SQL" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-5" target="xwpOA2KrBjkbyRzQtdvz-2">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="729" y="885" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-23" value="return rows" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;dashed=1;dashPattern=2 3;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-2" target="xwpOA2KrBjkbyRzQtdvz-5">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="726" y="933" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-24" value="model results" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;dashed=1;dashPattern=2 3;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-5" target="xwpOA2KrBjkbyRzQtdvz-4">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="949" y="981" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="xwpOA2KrBjkbyRzQtdvz-25" value="JSON response" style="verticalAlign=bottom;edgeStyle=elbowEdgeStyle;elbow=vertical;curved=0;rounded=0;dashed=1;dashPattern=2 3;endArrow=block;" edge="1" parent="1" source="xwpOA2KrBjkbyRzQtdvz-4" target="xwpOA2KrBjkbyRzQtdvz-7">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1162" y="1029" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
