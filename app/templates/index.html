@@ -161,12 +161,12 @@
   </style>
 </head>
 
-<body class="flex flex-col overflow-hidden" style="height: 100dvh;" x-data="groceryApp()" x-init="init()"
+<body class="flex flex-col overflow-hidden overflow-x-hidden" style="height: 100dvh;" x-data="groceryApp()" x-init="init()"
   x-effect="syncDetailPanelSelection()" :data-theme="theme" x-cloak>
 
   <!-- TOP PANEL: fixed header -->
-  <header class="theme-header text-white px-4 py-3 flex items-center justify-between flex-shrink-0 shadow-md gap-3">
-    <div class="flex items-center gap-2">
+  <header class="theme-header text-white px-4 py-3 flex flex-col items-stretch justify-between flex-shrink-0 shadow-md gap-3 sm:flex-row sm:items-center">
+    <div class="flex min-w-0 items-center gap-2">
       <span class="header-cart-badge" aria-hidden="true">
         <svg x-show="!hasDoneItems" class="header-cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="9" cy="20" r="1.5"></circle>
@@ -178,19 +178,35 @@
           <path d="M8.15 9.95a.75.75 0 0 1 1.06 0l.56.56 1.52-1.52a.75.75 0 1 1 1.06 1.06l-2.05 2.05a.75.75 0 0 1-1.06 0L8.15 11a.75.75 0 0 1 0-1.06z" />
         </svg>
       </span>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight leading-none">Grocery List</h1>
-        <p class="text-xs opacity-80 mt-0.5" x-text="progressText"></p>
+      <div class="min-w-0">
+        <h1 class="truncate text-xl font-bold tracking-tight leading-none">Grocery List</h1>
+        <p class="mt-0.5 truncate text-xs opacity-80" x-text="progressText"></p>
       </div>
     </div>
-    <div class="text-right leading-tight">
-      <div x-text="currentTime" class="font-mono text-sm font-semibold"></div>
-      <div x-text="currentDate" class="font-mono text-xs opacity-75"></div>
+    <div class="flex flex-wrap items-center justify-between gap-2 sm:justify-end sm:gap-3">
+      {% if current_user.is_admin %}
+      <a href="{{ url_for('admin_dashboard') }}" class="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20">
+        Admin
+      </a>
+      {% endif %}
+      <div class="min-w-0 text-left leading-tight sm:block sm:text-right">
+        <div class="text-[10px] uppercase tracking-[0.2em] opacity-70">Signed in</div>
+        <div class="text-sm font-semibold max-w-[14rem] truncate">{{ current_user.email }}</div>
+      </div>
+      <form method="post" action="{{ url_for('logout') }}">
+        <button type="submit" class="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20">
+          Log out
+        </button>
+      </form>
+      <div class="text-right leading-tight ml-auto sm:ml-0">
+        <div x-text="currentTime" class="font-mono text-sm font-semibold"></div>
+        <div x-text="currentDate" class="hidden font-mono text-xs opacity-75 sm:block"></div>
+      </div>
     </div>
   </header>
 
   <!-- MIDDLE PANEL: scrollable item list -->
-  <main class="flex-1 overflow-y-auto px-3 py-3">
+  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-3">
     <!-- Filter / sort bar -->
     <div class="sticky top-0 z-20 -mx-3 px-3 pt-2 pb-2 bg-white/80 backdrop-blur-sm border-b border-white/60">
       <div class="flex items-center gap-2 flex-wrap">
@@ -215,11 +231,11 @@
         :class="activeFilter === 'done' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'">Done</button>
       </div>
     </div>
-    <div class="mb-3 flex items-center gap-2">
+    <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
       <input x-model="searchQuery" type="text" placeholder="Filter items..."
         class="theme-field flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700"
         aria-label="Filter items" />
-      <div class="bg-white/85 border border-gray-200 rounded-full px-3 py-2 text-xs font-medium text-gray-600 whitespace-nowrap shadow-sm">
+      <div class="bg-white/85 border border-gray-200 rounded-full px-3 py-2 text-xs font-medium text-gray-600 shadow-sm self-start sm:self-auto">
         <span class="text-gray-400">Count</span>
         <span class="ml-1.5 font-semibold text-gray-900" x-text="filteredButtonCount"></span>
       </div>
@@ -277,7 +293,7 @@
   <!-- SETTINGS MODAL -->
   <template x-if="showSettings">
     <div class="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-end" @click="showSettings = false">
-      <div class="bg-white w-full rounded-t-3xl shadow-2xl p-6 animate-in slide-in-from-bottom" @click.stop style="max-height: 50vh; overflow-y: auto;">
+      <div class="bg-white w-full rounded-t-3xl shadow-2xl p-4 sm:p-6 animate-in slide-in-from-bottom" @click.stop style="max-height: 70vh; overflow-y: auto;">
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-lg font-semibold text-gray-900">Settings</h2>
           <button @click="showSettings = false" class="text-gray-400 hover:text-gray-600 transition-colors" aria-label="Close settings">
@@ -303,6 +319,29 @@
             </div>
           </div>
 
+          <div class="border-t pt-6">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-700">Change Password</label>
+              <p class="mt-1 text-xs leading-5 text-gray-500">Enter your current password, then choose a new one with at least 8 characters.</p>
+            </div>
+            <div class="space-y-3">
+              <input x-model="passwordForm.current_password" type="password" autocomplete="current-password" placeholder="Current password"
+                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <input x-model="passwordForm.new_password" type="password" autocomplete="new-password" placeholder="New password"
+                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <input x-model="passwordForm.confirmation_password" type="password" autocomplete="new-password" placeholder="Confirm new password"
+                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <template x-if="passwordMessage.text">
+                <div class="rounded-2xl border px-3 py-2 text-sm"
+                  :class="passwordMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
+                  x-text="passwordMessage.text"></div>
+              </template>
+              <button @click="changePassword()" :disabled="passwordSaving"
+                class="theme-primary w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-50"
+                x-text="passwordSaving ? 'Updating Password...' : 'Update Password'"></button>
+            </div>
+          </div>
+
           <!-- Store Management Section -->
           <div class="border-t pt-6">
             <label class="block text-sm font-medium text-gray-700 mb-3">Manage Stores</label>
@@ -317,7 +356,7 @@
                 <div class="text-sm text-gray-400 text-center py-2">No stores yet</div>
               </template>
             </div>
-            <div class="flex gap-2">
+            <div class="flex flex-col gap-2 sm:flex-row">
               <input x-model="newStoreName" @keydown.enter="addStore()" placeholder="New store name..." 
                 class="theme-field flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
               <button @click="addStore()" :disabled="!newStoreName.trim()" 
@@ -333,7 +372,7 @@
 
   <!-- BOTTOM PANEL: detail or add-item form -->
   <footer class="bg-white border-t border-gray-200 flex-shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
-    style="max-height: 44vh; overflow-y: auto;">
+    style="max-height: 46vh; overflow-y: auto;">
 
     <!-- Detail view (item selected) -->
     <template x-if="selectedItem">
@@ -377,21 +416,21 @@
               <!-- Quantity + Unit -->
               <div>
                 <p class="text-xs text-gray-400 mb-1">Quantity & Unit</p>
-                <div class="flex items-center gap-2">
+                <div class="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] gap-2 sm:flex sm:items-center">
                   <button @click="updateQuantity(selectedItem, selectedItem.quantity - 1)"
                     :disabled="selectedItem.quantity <= 1" class="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-bold
                                text-gray-600 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed
                                transition-colors select-none touch-manipulation">−</button>
                   <input type="number" min="1" max="100" x-model.number="selectedItem.quantity"
                     @change="updateQuantity(selectedItem, selectedItem.quantity)"
-                    class="theme-field flex-1 text-center font-semibold text-gray-800 border border-gray-200 rounded-lg py-1 [appearance:textfield]
+                    class="theme-field min-w-0 text-center font-semibold text-gray-800 border border-gray-200 rounded-lg py-1 [appearance:textfield]
                                [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   <button @click="updateQuantity(selectedItem, selectedItem.quantity + 1)"
                     :disabled="selectedItem.quantity >= 100" class="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-bold
                                text-gray-600 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed
                                transition-colors select-none touch-manipulation">+</button>
                   <input x-model="selectedItem.unit" @change="updateField(selectedItem, 'unit', selectedItem.unit)"
-                    @keydown.enter="$el.blur()" placeholder="unit" class="theme-field w-20 text-sm text-gray-600 border border-gray-200 rounded-lg px-2 py-1" />
+                    @keydown.enter="$el.blur()" placeholder="unit" class="theme-field col-span-3 w-full text-sm text-gray-600 border border-gray-200 rounded-lg px-2 py-1 sm:col-span-1 sm:w-20" />
                 </div>
               </div>
             </div>
@@ -429,9 +468,9 @@
     <template x-if="!selectedItem">
       <div class="p-4 space-y-3">
         <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add Item</h2>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input x-model="newItem.name" placeholder="Item name *" @keydown.enter="addItem()"
-            class="theme-field col-span-2 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm sm:col-span-2" />
           <input x-model="newItem.quantity" placeholder="Qty (e.g. 2)" type="number" min="0" step="0.1"
             class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm" />
           <input x-model="newItem.unit" placeholder="Unit (lbs, oz, each…)"
@@ -439,7 +478,7 @@
           <input x-model="newItem.category" list="category-options" placeholder="Category"
             class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm" />
           <select x-model.number="newItem.store_id"
-            class="theme-field col-span-2 border border-gray-200 rounded-xl px-3 py-2 text-sm">
+            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm sm:col-span-2">
             <option :value="null">Select a store *</option>
             <template x-for="store in stores" :key="store.id">
               <option :value="store.id" x-text="store.name"></option>
@@ -460,6 +499,8 @@
   </footer>
 
   <script>
+    const initialTheme = {{ initial_theme|tojson }};
+
     function groceryApp() {
       return {
         items: [],
@@ -468,7 +509,7 @@
         currentTime: '',
         currentDate: '',
         showSettings: false,
-        theme: 'meadow',
+        theme: initialTheme,
         themeOptions: [
           { id: 'meadow', label: 'Meadow', preview: 'linear-gradient(135deg, #22c55e 0%, #166534 100%)' },
           { id: 'ocean', label: 'Ocean', preview: 'linear-gradient(135deg, #38bdf8 0%, #0f4c81 100%)' },
@@ -481,6 +522,9 @@
         detailTab: 'detail',
         newItem: { name: '', quantity: '', unit: '', category: '', store_id: null },
         newStoreName: '',
+        passwordForm: { current_password: '', new_password: '', confirmation_password: '' },
+        passwordMessage: { type: '', text: '' },
+        passwordSaving: false,
 
         filterByActiveButton(list) {
           if (this.activeFilter === 'Food') return list.filter(i => i.category === 'Food');
@@ -526,7 +570,13 @@
               return haystack.includes(query);
             });
           }
-          list = [...list].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
+          list = [...list].sort((left, right) => {
+            const sortDelta = (left.sort_order || 0) - (right.sort_order || 0);
+            if (sortDelta !== 0) {
+              return sortDelta;
+            }
+            return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+          });
           // checked items always sink to bottom within filter
           return [...list.filter(i => !i.checked), ...list.filter(i => i.checked)];
         },
@@ -568,10 +618,6 @@
         },
 
         init() {
-          const savedTheme = window.localStorage.getItem('grocery-theme');
-          if (this.themeOptions.some(option => option.id === savedTheme)) {
-            this.theme = savedTheme;
-          }
           this.syncThemeColor();
           document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.showSettings) this.showSettings = false;
@@ -582,10 +628,56 @@
           setInterval(() => this.updateClock(), 1000);
         },
 
-        setTheme(themeId) {
+        async setTheme(themeId) {
+          if (!this.themeOptions.some(option => option.id === themeId)) {
+            return;
+          }
           this.theme = themeId;
-          window.localStorage.setItem('grocery-theme', themeId);
           this.syncThemeColor();
+          try {
+            const res = await fetch('/api/preferences/theme', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ theme: themeId }),
+            });
+            if (!res.ok) {
+              throw new Error('Unable to save theme preference.');
+            }
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        clearPasswordMessage() {
+          this.passwordMessage = { type: '', text: '' };
+        },
+
+        resetPasswordForm() {
+          this.passwordForm = { current_password: '', new_password: '', confirmation_password: '' };
+        },
+
+        async changePassword() {
+          this.passwordSaving = true;
+          this.clearPasswordMessage();
+
+          try {
+            const res = await fetch('/api/account/password', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.passwordForm),
+            });
+            const payload = await res.json();
+            if (!res.ok) {
+              throw new Error(payload.error || 'Unable to update password.');
+            }
+
+            this.passwordMessage = { type: 'success', text: 'Password updated successfully.' };
+            this.resetPasswordForm();
+          } catch (err) {
+            this.passwordMessage = { type: 'error', text: err.message };
+          } finally {
+            this.passwordSaving = false;
+          }
         },
 
         syncThemeColor() {

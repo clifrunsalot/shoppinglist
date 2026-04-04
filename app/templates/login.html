@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>Sign In | Grocery List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.16),_transparent_40%),linear-gradient(180deg,_#f8fafc_0%,_#ecfeff_100%)] text-slate-900">
+  <main class="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-10">
+    <div class="grid w-full gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+      <section class="space-y-6">
+        <span class="inline-flex rounded-full border border-teal-200 bg-white/80 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-teal-700 shadow-sm">
+          Private access
+        </span>
+        <div class="space-y-4">
+          <h1 class="max-w-xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+            Sign in to your grocery list.
+          </h1>
+          <p class="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
+            This app now requires an authorized account. Use an email and password created by an administrator, then manage your own private stores and items.
+          </p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
+            <div class="text-sm font-semibold text-slate-900">Private lists</div>
+            <p class="mt-2 text-sm leading-6 text-slate-600">Each account sees only its own stores and shopping items.</p>
+          </div>
+          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
+            <div class="text-sm font-semibold text-slate-900">Server sessions</div>
+            <p class="mt-2 text-sm leading-6 text-slate-600">The browser stays simple while Flask handles authenticated sessions.</p>
+          </div>
+          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
+            <div class="text-sm font-semibold text-slate-900">Controlled access</div>
+            <p class="mt-2 text-sm leading-6 text-slate-600">New users are created by an administrator instead of open self-signup.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.45)] backdrop-blur">
+        <div class="mb-6 space-y-2">
+          <h2 class="text-2xl font-bold text-slate-950">Welcome back</h2>
+          <p class="text-sm leading-6 text-slate-500">Use your authorized account to continue.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="mb-4 space-y-3">
+          {% for category, message in messages %}
+          <div class="rounded-2xl border px-4 py-3 text-sm font-medium {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border-amber-200 bg-amber-50 text-amber-700{% endif %}">
+            {{ message }}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% if error_message %}
+        <div class="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          {{ error_message }}
+        </div>
+        {% endif %}
+
+        <form method="post" class="space-y-4">
+          <input type="hidden" name="next" value="{{ next_target }}" />
+          <div>
+            <label for="email" class="mb-2 block text-sm font-semibold text-slate-700">Email</label>
+            <input id="email" name="email" type="email" autocomplete="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-100" />
+          </div>
+          <div>
+            <label for="password" class="mb-2 block text-sm font-semibold text-slate-700">Password</label>
+            <div class="relative">
+              <input id="password" name="password" type="password" autocomplete="current-password" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 pr-20 text-sm text-slate-900 outline-none transition focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-100" />
+              <button id="toggle-password" type="button" class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-600 transition hover:border-teal-300 hover:text-teal-700">
+                Show
+              </button>
+            </div>
+          </div>
+          <label class="flex items-center gap-3 text-sm text-slate-600">
+            <input type="checkbox" name="remember_me" class="h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500" />
+            Keep me signed in on this device
+          </label>
+          <button type="submit" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.24em] text-white transition hover:bg-teal-700">
+            Sign in
+          </button>
+        </form>
+
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+          Need an account? Request access below or ask an administrator to create one for you.
+        </div>
+
+        <form method="post" action="{{ url_for('signup') }}" class="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-4">
+          <div>
+            <h3 class="text-base font-semibold text-slate-900">Request Access</h3>
+            <p class="mt-1 text-sm text-slate-500">Submit your email and an administrator can approve your account and issue a temporary password.</p>
+          </div>
+          <div>
+            <label for="signup-email" class="mb-2 block text-sm font-semibold text-slate-700">Email</label>
+            <input id="signup-email" name="email" type="email" autocomplete="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-100" />
+          </div>
+          <button type="submit" class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-800 transition hover:border-teal-300 hover:text-teal-700">
+            Request Approval
+          </button>
+        </form>
+
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+          Administrators can still create accounts directly on the server with <span class="font-semibold text-slate-900">flask create-user EMAIL</span>.
+        </div>
+      </section>
+    </div>
+  </main>
+  <script>
+    const togglePasswordButton = document.getElementById('toggle-password');
+    const passwordInput = document.getElementById('password');
+
+    if (togglePasswordButton && passwordInput) {
+      togglePasswordButton.addEventListener('click', () => {
+        const showing = passwordInput.type === 'text';
+        passwordInput.type = showing ? 'password' : 'text';
+        togglePasswordButton.textContent = showing ? 'Show' : 'Hide';
+      });
+    }
+  </script>
+</body>
+
+</html>

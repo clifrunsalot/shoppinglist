@@ -11,10 +11,10 @@
 
 ## Build And Run
 
-- Use the Docker Compose workflow in [../README.md](../README.md) for normal local development.
+- Use [../README.md](../README.md) as the authoritative source for local setup, Docker Compose commands, testing, and deployment steps.
 - The main app entry is `FLASK_APP=app.main`; if you run Flask commands outside Docker, export `FLASK_APP=app.main` and the expected `DB_*` variables first.
 - Run schema changes from the `web` container with `docker-compose run --rm web flask db migrate -m "message"` and `docker-compose run --rm web flask db upgrade`.
-- There is no test suite in the repository today, so do not claim test coverage that was not actually added and run.
+- The repository includes a pytest suite under `tests/`; tests use the app factory with SQLite instead of the Docker Postgres service.
 
 ## Conventions
 
@@ -27,3 +27,4 @@
 
 - Changes to [../db/init/init.sql](../db/init/init.sql) do not affect an existing Postgres volume; the seed scripts run only when the `db_data` volume is created for the first time.
 - Compose sets database host and port values for the app container. Keep `.env` aligned with [../docker-compose.yml](../docker-compose.yml) when changing connection settings.
+- `DATABASE_URL` takes precedence over the individual `DB_*` settings when both are present.
