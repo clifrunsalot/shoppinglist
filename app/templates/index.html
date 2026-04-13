@@ -131,6 +131,16 @@
       box-shadow: 0 0 0 3px var(--accent-surface);
     }
 
+    .theme-secondary-surface {
+      background: color-mix(in srgb, var(--accent-soft) 72%, white 28%);
+      border-color: color-mix(in srgb, var(--accent-soft-border) 70%, #cbd5e1 30%);
+      color: color-mix(in srgb, var(--accent-strong) 78%, #334155 22%);
+    }
+
+    .theme-secondary-surface:hover {
+      background: color-mix(in srgb, var(--accent-soft) 82%, white 18%);
+    }
+
     .theme-outline {
       border-color: var(--accent-soft-border);
       color: var(--accent);
@@ -206,11 +216,11 @@
   </header>
 
   <!-- MIDDLE PANEL: scrollable item list -->
-  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-3">
+  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-3" @scroll.passive="dismissCollapsedSelection()">
     <!-- Filter / sort bar -->
     <div class="sticky top-0 z-20 -mx-3 px-3 pt-2 pb-2 bg-white/80 backdrop-blur-sm border-b border-white/60">
       <div class="flex items-center gap-2 flex-wrap">
-        <button @click="showSettings = !showSettings" class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+        <button @click="toggleSettings()" class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         :aria-label="showSettings ? 'Close settings' : 'Open settings'">
           <svg class="w-5 h-5 overflow-visible" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -232,7 +242,7 @@
       </div>
     </div>
     <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-      <input x-model="searchQuery" type="text" placeholder="Filter items..."
+      <input x-model="searchQuery" @focus="dismissCollapsedSelection()" type="text" placeholder="Filter items..."
         class="theme-field flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700"
         aria-label="Filter items" />
       <div class="bg-white/85 border border-gray-200 rounded-full px-3 py-2 text-xs font-medium text-gray-600 shadow-sm self-start sm:self-auto">
@@ -256,7 +266,7 @@
     </template>
     <ul class="space-y-2">
       <template x-for="item in filteredItems" :key="item.id">
-        <li @click="selectItem(item, 'click')" @touchend.stop.prevent="selectItem(item, 'touch')"
+        <li :data-testid="`item-row-${item.id}`" @click="selectItem(item, 'click')" @touchend.stop.prevent="selectItem(item, 'touch')"
           @keydown.enter.prevent="selectItem(item, 'keyboard')" @keydown.space.prevent="selectItem(item, 'keyboard')" tabindex="0" role="button"
           class="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all active:scale-95"
           :class="selectedItem && selectedItem.id === item.id
@@ -342,161 +352,164 @@
             </div>
           </div>
 
-          <!-- Store Management Section -->
-          <div class="border-t pt-6">
-            <label class="block text-sm font-medium text-gray-700 mb-3">Manage Stores</label>
-            <div class="space-y-2 mb-3">
-              <template x-for="store in stores" :key="store.id">
-                <div class="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2">
-                  <span class="flex-1 text-sm text-gray-700" x-text="store.name"></span>
-                  <button @click="deleteStore(store.id)" class="text-gray-400 hover:text-red-500 transition-colors text-sm font-medium">Delete</button>
-                </div>
-              </template>
-              <template x-if="stores.length === 0">
-                <div class="text-sm text-gray-400 text-center py-2">No stores yet</div>
-              </template>
-            </div>
-            <div class="flex flex-col gap-2 sm:flex-row">
-              <input x-model="newStoreName" @keydown.enter="addStore()" placeholder="New store name..." 
-                class="theme-field flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              <button @click="addStore()" :disabled="!newStoreName.trim()" 
-                class="theme-primary px-3 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                Add
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
   </template>
 
-  <!-- BOTTOM PANEL: detail or add-item form -->
-  <footer class="bg-white border-t border-gray-200 flex-shrink-0 shadow-[0_-2px_12px_rgba(0,0,0,0.06)]"
-    style="max-height: 46vh; overflow-y: auto;">
+  <div class="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-30 flex flex-col items-end gap-2">
+    <template x-if="selectedItem && !panelOpen">
+      <button data-testid="open-detail-panel" @click="openDetailPanel()"
+        class="theme-secondary-surface inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold shadow-[0_16px_28px_-18px_rgba(15,23,42,0.9)] backdrop-blur transition-transform hover:scale-[1.02] active:scale-[0.98]">
+        <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500/80">Selected</span>
+        <span class="max-w-[10rem] truncate" x-text="selectedItem.name"></span>
+        <span>Details</span>
+      </button>
+    </template>
 
-    <!-- Detail view (item selected) -->
-    <template x-if="selectedItem">
-      <div class="p-4 space-y-3 flex flex-col h-full">
-        <!-- Header -->
-        <div class="flex items-center justify-between flex-shrink-0">
-          <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Item Details</h2>
-          <button @click="selectedItem = null" class="text-xs text-gray-400 hover:text-gray-600 transition-colors">✕ Close</button>
+    <button data-testid="open-add-panel" @click="openAddPanel()"
+      class="theme-primary inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold shadow-[0_16px_28px_-18px_rgba(15,23,42,0.9)] transition-transform hover:scale-[1.02] active:scale-[0.98]">
+      <span class="text-lg leading-none">＋</span>
+      <span>Add Item</span>
+    </button>
+  </div>
+
+  <template x-if="panelOpen">
+    <div class="fixed inset-0 z-50 bg-black/35 backdrop-blur-sm flex items-end sm:items-stretch sm:justify-end" @click="closePanel()">
+      <div class="bg-white w-full max-h-[82vh] rounded-t-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in sm:max-h-none sm:h-full sm:max-w-[28rem] sm:rounded-none sm:rounded-l-[2rem]" @click.stop>
+        <div class="px-4 pt-3 sm:hidden">
+          <div class="mx-auto h-1.5 w-12 rounded-full bg-gray-200"></div>
         </div>
 
-        <!-- Tab buttons -->
-        <div class="flex gap-2 border-b border-gray-200 -mx-4 px-4 flex-shrink-0">
-          <button @click="detailTab = 'detail'" :class="detailTab === 'detail' ? 'border-b-2 border-gray-900 text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'"
-            class="py-2 px-1 text-sm transition-colors">Detail</button>
-          <button @click="detailTab = 'advanced'" :class="detailTab === 'advanced' ? 'border-b-2 border-gray-900 text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'"
-            class="py-2 px-1 text-sm transition-colors">Advanced</button>
-        </div>
+        <template x-if="panelMode === 'detail' && selectedItem">
+          <div class="flex min-h-0 flex-1 flex-col">
+            <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-4">
+              <div class="min-w-0">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Item Details</p>
+                <p class="truncate text-base font-semibold text-gray-900" x-text="selectedItem.name"></p>
+              </div>
+              <button data-testid="panel-close" @click="closePanel()" class="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 transition hover:border-gray-300 hover:text-gray-700">Close</button>
+            </div>
 
-        <!-- Tab content (scrollable) -->
-        <div class="flex-1 overflow-y-auto">
-          <!-- Detail Tab -->
-          <template x-if="detailTab === 'detail'">
-            <div class="space-y-3 text-sm pt-3">
-              <!-- Name -->
-              <div>
-                <p class="text-xs text-gray-400 mb-1">Name</p>
-                <input x-model="selectedItem.name" @change="updateField(selectedItem, 'name', selectedItem.name)"
-                  @keydown.enter="$el.blur()" class="theme-field w-full font-semibold text-gray-800 border border-gray-200 rounded-lg px-2 py-1" />
+            <div data-testid="item-detail-panel" class="flex min-h-0 flex-1 flex-col">
+              <div class="flex gap-2 px-4 pt-3">
+                <button @click="detailTab = 'detail'" :class="detailTab === 'detail' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'"
+                  class="rounded-full border px-3 py-1.5 text-sm font-medium transition-colors">Detail</button>
+                <button data-testid="detail-tab-advanced" @click="detailTab = 'advanced'" :class="detailTab === 'advanced' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'"
+                  class="rounded-full border px-3 py-1.5 text-sm font-medium transition-colors">Advanced</button>
               </div>
 
-              <!-- Price -->
-              <div>
-                <p class="text-xs text-gray-400 mb-1">Price</p>
-                <div class="relative">
-                  <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">$</span>
-                  <input x-model="selectedItem.price" @change="updatePrice(selectedItem, selectedItem.price)"
-                    @keydown.enter="$el.blur()" inputmode="decimal" class="theme-field w-full font-semibold text-gray-800 border border-gray-200 rounded-lg pl-7 pr-2 py-1" />
-                </div>
-              </div>
+              <div class="flex-1 overflow-y-auto px-4 py-4">
+                <template x-if="detailTab === 'detail'">
+                  <div class="space-y-4 text-sm">
+                    <div>
+                      <p class="mb-1 text-xs text-gray-400">Name</p>
+                      <input data-testid="detail-name-input" :data-item-id="selectedItem.id" x-model="selectedItem.name" @input="stageItemField(Number($el.dataset.itemId), 'name', $event.target.value)" @blur="flushItemChanges(Number($el.dataset.itemId))"
+                        @keydown.enter="$el.blur()" class="theme-field w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-800" />
+                    </div>
 
-              <!-- Quantity + Unit -->
-              <div>
-                <p class="text-xs text-gray-400 mb-1">Quantity & Unit</p>
-                <div class="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] gap-2 sm:flex sm:items-center">
-                  <button @click="updateQuantity(selectedItem, selectedItem.quantity - 1)"
-                    :disabled="selectedItem.quantity <= 1" class="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-bold
-                               text-gray-600 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed
-                               transition-colors select-none touch-manipulation">−</button>
-                  <input type="number" min="1" max="100" x-model.number="selectedItem.quantity"
-                    @change="updateQuantity(selectedItem, selectedItem.quantity)"
-                    class="theme-field min-w-0 text-center font-semibold text-gray-800 border border-gray-200 rounded-lg py-1 [appearance:textfield]
-                               [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  <button @click="updateQuantity(selectedItem, selectedItem.quantity + 1)"
-                    :disabled="selectedItem.quantity >= 100" class="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-lg font-bold
-                               text-gray-600 hover:bg-gray-100 active:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed
-                               transition-colors select-none touch-manipulation">+</button>
-                  <input x-model="selectedItem.unit" @change="updateField(selectedItem, 'unit', selectedItem.unit)"
-                    @keydown.enter="$el.blur()" placeholder="unit" class="theme-field col-span-3 w-full text-sm text-gray-600 border border-gray-200 rounded-lg px-2 py-1 sm:col-span-1 sm:w-20" />
-                </div>
+                    <div>
+                      <p class="mb-1 text-xs text-gray-400">Price</p>
+                      <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-gray-500">$</span>
+                        <input data-testid="detail-price-input" :data-item-id="selectedItem.id" x-model="selectedItem.price" @blur="commitPriceField(Number($el.dataset.itemId), $event.target.value)"
+                          @keydown.enter="$el.blur()" inputmode="decimal" class="theme-field w-full rounded-xl border border-gray-200 py-2 pl-7 pr-3 font-semibold text-gray-800" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <p class="mb-1 text-xs text-gray-400">Quantity & Unit</p>
+                      <div class="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] gap-2 sm:flex sm:items-center">
+                        <button :data-item-id="selectedItem.id" @click="updateQuantity({ id: Number($el.dataset.itemId) }, currentSelectedQuantity() - 1)"
+                          :disabled="currentSelectedQuantity() <= 1" class="h-11 w-11 rounded-xl border border-gray-200 text-lg font-bold text-gray-600 transition-colors select-none touch-manipulation hover:bg-gray-100 active:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-30">−</button>
+                        <input data-testid="detail-quantity-input" :data-item-id="selectedItem.id" type="number" min="1" max="100" x-model="selectedItem.quantity"
+                          @blur="commitQuantityField(Number($el.dataset.itemId), $event.target.value)"
+                          class="theme-field min-w-0 rounded-xl border border-gray-200 py-2 text-center font-semibold text-gray-800 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                        <button :data-item-id="selectedItem.id" @click="updateQuantity({ id: Number($el.dataset.itemId) }, currentSelectedQuantity() + 1)"
+                          :disabled="currentSelectedQuantity() >= 100" class="h-11 w-11 rounded-xl border border-gray-200 text-lg font-bold text-gray-600 transition-colors select-none touch-manipulation hover:bg-gray-100 active:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-30">+</button>
+                        <input data-testid="detail-unit-input" :data-item-id="selectedItem.id" x-model="selectedItem.unit" @input="stageItemField(Number($el.dataset.itemId), 'unit', $event.target.value)" @blur="flushItemChanges(Number($el.dataset.itemId))"
+                          @keydown.enter="$el.blur()" placeholder="unit" class="theme-field col-span-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 sm:col-span-1 sm:w-24" />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+
+                <template x-if="detailTab === 'advanced'">
+                  <div class="space-y-4 text-sm">
+                    <div>
+                      <p class="mb-1 text-xs text-gray-400">Category</p>
+                      <select x-ref="detailCategorySelect" x-effect="syncSelectedCategoryControl()" data-testid="detail-category-select" :data-item-id="selectedItem.id" :disabled="categorySaveItemId === selectedItem.id" @change="selectedItem.category_value = $event.target.value; saveCategorySelection(Number($el.dataset.itemId), selectedItem.category_value === '' ? null : selectedItem.category_value)"
+                        class="theme-field w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                        <option value="">No category</option>
+                        <template x-for="category in categories" :key="category.id">
+                          <option :value="category.name" x-text="category.name"></option>
+                        </template>
+                      </select>
+                      <p data-testid="detail-category-saving" x-show="categorySaveItemId === selectedItem.id" class="mt-1 text-[11px] font-medium text-gray-400">Saving category...</p>
+                    </div>
+                    <div>
+                      <p class="mb-1 text-xs text-gray-400">Store</p>
+                      <select x-ref="detailStoreSelect" x-effect="syncSelectedStoreControl()" data-testid="detail-store-select" :data-item-id="selectedItem.id" :disabled="storeSaveItemId === selectedItem.id" @change="selectedItem.store_value = $event.target.value; saveStoreSelection(Number($el.dataset.itemId), selectedItem.store_value === '' ? null : Number(selectedItem.store_value))"
+                        class="theme-field w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                        <option value="">Select a store...</option>
+                        <template x-for="store in stores" :key="store.id">
+                          <option :value="String(store.id)" x-text="store.name"></option>
+                        </template>
+                      </select>
+                      <p data-testid="detail-store-saving" x-show="storeSaveItemId === selectedItem.id" class="mt-1 text-[11px] font-medium text-gray-400">Saving store...</p>
+                    </div>
+                    <div class="border-t pt-3 text-xs text-gray-500">
+                      <p>Item ID: <span class="font-mono font-semibold" x-text="selectedItem.id"></span></p>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
-          </template>
+          </div>
+        </template>
 
-          <!-- Advanced Tab -->
-          <template x-if="detailTab === 'advanced'">
-            <div class="space-y-3 text-sm pt-3">
+        <template x-if="panelMode === 'add'">
+          <div data-testid="add-item-panel" class="flex min-h-0 flex-1 flex-col">
+            <div class="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-4">
               <div>
-                <p class="text-xs text-gray-400 mb-1">Category</p>
-                <input x-model="selectedItem.category" list="category-options" placeholder="Category"
-                  @change="updateField(selectedItem, 'category', selectedItem.category)" @keydown.enter="$el.blur()"
-                  class="theme-field w-full border border-gray-200 rounded-lg px-2 py-1 text-sm" />
+                <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-gray-400">Add Item</p>
+                <p class="text-base font-semibold text-gray-900">Create a new list entry</p>
               </div>
-              <div>
-                <p class="text-xs text-gray-400 mb-1">Store</p>
-                <select x-model.number="selectedItem.store_id" @change="updateField(selectedItem, 'store_id', selectedItem.store_id)"
-                  class="theme-field w-full border border-gray-200 rounded-lg px-2 py-1 text-sm">
-                  <option :value="null">Select a store...</option>
+              <button data-testid="panel-close" @click="closePanel()" class="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 transition hover:border-gray-300 hover:text-gray-700">Close</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto px-4 py-4">
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <input x-model="newItem.name" placeholder="Item name *" @keydown.enter="addItem()"
+                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2" />
+                <input x-model="newItem.quantity" placeholder="Qty (e.g. 2)" type="number" min="0" step="0.1"
+                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+                <input x-model="newItem.unit" placeholder="Unit (lbs, oz, each…)"
+                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+                <select data-testid="new-item-category-select" x-model="newItem.category"
+                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                  <option value="">No category</option>
+                  <template x-for="category in categories" :key="category.id">
+                    <option :value="category.name" x-text="category.name"></option>
+                  </template>
+                </select>
+                <select x-model.number="newItem.store_id"
+                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2">
+                  <option :value="null">Select a store *</option>
                   <template x-for="store in stores" :key="store.id">
                     <option :value="store.id" x-text="store.name"></option>
                   </template>
                 </select>
               </div>
-              <div class="text-xs text-gray-500 pt-2 border-t">
-                <p>Item ID: <span class="font-mono font-semibold" x-text="selectedItem.id"></span></p>
-              </div>
+              <button @click="addItem()" :disabled="!newItem.name.trim() || !newItem.store_id" class="theme-primary mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40">
+                + Add to List
+              </button>
             </div>
-          </template>
-        </div>
+          </div>
+        </template>
       </div>
-    </template>
-
-    <!-- Add item form (nothing selected) -->
-    <template x-if="!selectedItem">
-      <div class="p-4 space-y-3">
-        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide">Add Item</h2>
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input x-model="newItem.name" placeholder="Item name *" @keydown.enter="addItem()"
-            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm sm:col-span-2" />
-          <input x-model="newItem.quantity" placeholder="Qty (e.g. 2)" type="number" min="0" step="0.1"
-            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-          <input x-model="newItem.unit" placeholder="Unit (lbs, oz, each…)"
-            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-          <input x-model="newItem.category" list="category-options" placeholder="Category"
-            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-          <select x-model.number="newItem.store_id"
-            class="theme-field border border-gray-200 rounded-xl px-3 py-2 text-sm sm:col-span-2">
-            <option :value="null">Select a store *</option>
-            <template x-for="store in stores" :key="store.id">
-              <option :value="store.id" x-text="store.name"></option>
-            </template>
-          </select>
-        </div>
-        <datalist id="category-options">
-          <template x-for="category in categoryOptions" :key="category">
-            <option :value="category"></option>
-          </template>
-        </datalist>
-        <button @click="addItem()" :disabled="!newItem.name.trim() || !newItem.store_id" class="theme-primary w-full disabled:opacity-40 disabled:cursor-not-allowed
-                       font-semibold py-2.5 rounded-xl text-sm transition-colors">
-          + Add to List
-        </button>
-      </div>
-    </template>
-  </footer>
+    </div>
+  </template>
 
   <script>
     const initialTheme = {{ initial_theme|tojson }};
@@ -505,6 +518,7 @@
       return {
         items: [],
         stores: [],
+        categories: [],
         selectedItem: null,
         currentTime: '',
         currentDate: '',
@@ -520,11 +534,22 @@
         searchQuery: '',
         lastTouchSelectAt: 0,
         detailTab: 'detail',
+        panelOpen: false,
+        panelMode: null,
         newItem: { name: '', quantity: '', unit: '', category: '', store_id: null },
         newStoreName: '',
         passwordForm: { current_password: '', new_password: '', confirmation_password: '' },
         passwordMessage: { type: '', text: '' },
         passwordSaving: false,
+        itemSaveDebounceMs: 400,
+        pendingItemChanges: {},
+        pendingItemTimers: {},
+        pendingItemRollback: {},
+        pendingItemSavePromises: {},
+        storeSaveItemId: null,
+        categorySaveItemId: null,
+        storeRefreshTimer: null,
+        itemSelectionPromise: Promise.resolve(),
 
         filterByActiveButton(list) {
           if (this.activeFilter === 'Food') return list.filter(i => i.category === 'Food');
@@ -546,23 +571,13 @@
           return this.doneItemCount > 0;
         },
 
-        get categoryOptions() {
-          const uniqueCategories = new Set(
-            this.items
-              .map(item => (item.category || '').trim())
-              .filter(Boolean)
-          );
-          uniqueCategories.add('Food');
-          uniqueCategories.add('Non-Food');
-          return Array.from(uniqueCategories).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-        },
-
         get filteredItems() {
           let list = this.filterByActiveButton(this.items);
           const query = this.searchQuery.trim().toLowerCase();
           if (query) {
+            const storeNamesById = new Map(this.stores.map(store => [store.id, store.name]));
             list = list.filter((item) => {
-              const storeName = this.stores.find(s => s.id === item.store_id)?.name || '';
+              const storeName = storeNamesById.get(item.store_id) || '';
               const haystack = [item.name, item.category, item.unit, storeName]
                 .filter(Boolean)
                 .join(' ')
@@ -585,7 +600,14 @@
           const visibleItems = this.filteredItems;
 
           if (!visibleItems.length) {
-            if (this.selectedItem) this.selectedItem = null;
+            if (this.selectedItem) {
+              this.flushSelectedItemChanges();
+              this.selectedItem = null;
+              if (this.panelMode === 'detail') {
+                this.panelOpen = false;
+                this.panelMode = null;
+              }
+            }
             return;
           }
 
@@ -593,14 +615,24 @@
 
           const stillVisible = visibleItems.some(i => i.id === this.selectedItem.id);
           if (!stillVisible) {
+            this.flushSelectedItemChanges();
             this.selectedItem = null;
+            if (this.panelMode === 'detail') {
+              this.panelOpen = false;
+              this.panelMode = null;
+            }
           }
         },
 
         setActiveFilter(filter) {
           if (this.activeFilter === filter) return;
+          this.flushSelectedItemChanges();
           this.activeFilter = filter;
           this.selectedItem = null;
+          if (this.panelMode === 'detail') {
+            this.panelOpen = false;
+            this.panelMode = null;
+          }
         },
 
         get progressText() {
@@ -621,11 +653,28 @@
           this.syncThemeColor();
           document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.showSettings) this.showSettings = false;
+            if (e.key === 'Escape' && this.panelOpen) this.closePanel();
+          });
+          window.addEventListener('beforeunload', () => {
+            this.flushSelectedItemChanges();
+          });
+          window.addEventListener('focus', () => {
+            this.refreshStoresSilently();
+          });
+          document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+              this.flushSelectedItemChanges();
+            }
+            if (!document.hidden) {
+              this.refreshStoresSilently();
+            }
           });
           this.fetchStores();
+          this.fetchCategories();
           this.fetchItems();
           this.updateClock();
           setInterval(() => this.updateClock(), 1000);
+          this.storeRefreshTimer = window.setInterval(() => this.refreshStoresSilently(), 30000);
         },
 
         async setTheme(themeId) {
@@ -654,6 +703,541 @@
 
         resetPasswordForm() {
           this.passwordForm = { current_password: '', new_password: '', confirmation_password: '' };
+        },
+
+        setSelectedItemFromState(item) {
+          this.selectedItem = item
+            ? {
+                ...item,
+                price: this.formatPrice(item.price),
+                category_value: item.category || '',
+                store_value: item.store_id == null ? '' : String(item.store_id),
+              }
+            : null;
+        },
+
+        currentSelectedQuantity() {
+          if (!this.selectedItem) {
+            return 1;
+          }
+
+          const quantity = Number(this.selectedItem.quantity);
+          if (!Number.isFinite(quantity)) {
+            return 1;
+          }
+
+          return Math.min(100, Math.max(1, Math.round(quantity)));
+        },
+
+        async dismissCollapsedSelection() {
+          if (!this.selectedItem || this.panelOpen) {
+            return;
+          }
+
+          await this.flushSelectedItemChanges();
+          this.selectedItem = null;
+        },
+
+        async toggleSettings() {
+          if (!this.showSettings) {
+            await this.dismissCollapsedSelection();
+          }
+          this.showSettings = !this.showSettings;
+        },
+
+        async openAddPanel() {
+          await this.flushSelectedItemChanges();
+          this.selectedItem = null;
+          this.panelMode = 'add';
+          this.panelOpen = true;
+          this.showSettings = false;
+        },
+
+        openDetailPanel(item = null) {
+          const nextItem = item || this.selectedItem;
+          if (!nextItem) {
+            return;
+          }
+          this.setSelectedItemFromState(nextItem);
+          this.detailTab = 'detail';
+          this.panelMode = 'detail';
+          this.panelOpen = true;
+          this.showSettings = false;
+        },
+
+        async closePanel() {
+          if (this.panelMode === 'detail') {
+            await this.flushSelectedItemChanges();
+          }
+          this.panelOpen = false;
+          this.panelMode = null;
+        },
+
+        async closeSelectedItem() {
+          await this.flushSelectedItemChanges();
+          this.panelOpen = false;
+          this.panelMode = null;
+          this.selectedItem = null;
+        },
+
+        syncSelectedStoreControl() {
+          const select = this.$refs.detailStoreSelect;
+          const nextValue = this.selectedItem?.store_value ?? '';
+          if (!select) {
+            return;
+          }
+
+          window.requestAnimationFrame(() => {
+            if (this.$refs.detailStoreSelect === select && select.value !== nextValue) {
+              select.value = nextValue;
+            }
+          });
+        },
+
+        syncSelectedCategoryControl() {
+          const select = this.$refs.detailCategorySelect;
+          const nextValue = this.selectedItem?.category_value ?? '';
+          if (!select) {
+            return;
+          }
+
+          window.requestAnimationFrame(() => {
+            if (this.$refs.detailCategorySelect === select && select.value !== nextValue) {
+              select.value = nextValue;
+            }
+          });
+        },
+
+        replaceItemInState(updatedItem) {
+          const index = this.items.findIndex(existingItem => existingItem.id === updatedItem.id);
+          if (index === -1) {
+            return;
+          }
+
+          this.items.splice(index, 1, updatedItem);
+          if (this.selectedItem && this.selectedItem.id === updatedItem.id) {
+            this.setSelectedItemFromState(updatedItem);
+          }
+        },
+
+        applyOptimisticItemUpdate(itemId, changes) {
+          const index = this.items.findIndex(existingItem => existingItem.id === itemId);
+          if (index === -1) {
+            return null;
+          }
+
+          const previousItem = { ...this.items[index] };
+          const nextItem = { ...previousItem, ...changes };
+          this.items.splice(index, 1, nextItem);
+          if (this.selectedItem && this.selectedItem.id === itemId) {
+            this.setSelectedItemFromState(nextItem);
+          }
+          return previousItem;
+        },
+
+        getItemStateSnapshot(itemId) {
+          const item = this.items.find(existingItem => existingItem.id === itemId);
+          return item ? { ...item } : null;
+        },
+
+        clearPendingItemTimer(itemId) {
+          const timerId = this.pendingItemTimers[itemId];
+          if (!timerId) {
+            return;
+          }
+
+          window.clearTimeout(timerId);
+          delete this.pendingItemTimers[itemId];
+        },
+
+        clearPendingItemState(itemId) {
+          this.clearPendingItemTimer(itemId);
+          delete this.pendingItemChanges[itemId];
+          delete this.pendingItemRollback[itemId];
+          delete this.pendingItemSavePromises[itemId];
+        },
+
+        toLocalItemChanges(payloadChanges) {
+          const localChanges = {};
+          for (const [field, value] of Object.entries(payloadChanges)) {
+            if (field === 'price') {
+              localChanges[field] = Number.parseFloat(value) || 0;
+              continue;
+            }
+            localChanges[field] = value;
+          }
+          return localChanges;
+        },
+
+        normalizeItemPatch(field, value) {
+          if (field === 'price') {
+            return { [field]: this.formatPrice(value) };
+          }
+
+          if (field === 'quantity') {
+            const quantity = Math.min(100, Math.max(1, Math.round(Number(value)) || 1));
+            return { [field]: quantity };
+          }
+
+          const normalizedValue = this.normalizeItemFieldValue(field, value);
+          if (field === 'name' && !normalizedValue) {
+            return null;
+          }
+
+          return { [field]: normalizedValue };
+        },
+
+        stageItemChanges(itemId, payloadChanges, { immediate = false } = {}) {
+          if (!payloadChanges) {
+            return;
+          }
+
+          if (!this.pendingItemRollback[itemId]) {
+            const snapshot = this.getItemStateSnapshot(itemId);
+            if (snapshot) {
+              this.pendingItemRollback[itemId] = snapshot;
+            }
+          }
+
+          this.applyOptimisticItemUpdate(itemId, this.toLocalItemChanges(payloadChanges));
+          this.pendingItemChanges[itemId] = {
+            ...(this.pendingItemChanges[itemId] || {}),
+            ...payloadChanges,
+          };
+
+          if (immediate) {
+            return this.flushItemChanges(itemId);
+          }
+
+          this.clearPendingItemTimer(itemId);
+          this.pendingItemTimers[itemId] = window.setTimeout(() => {
+            this.flushItemChanges(itemId);
+          }, this.itemSaveDebounceMs);
+        },
+
+        collectSelectedItemDraftChanges(itemId) {
+          if (!this.selectedItem || this.selectedItem.id !== itemId) {
+            return null;
+          }
+
+          const currentItem = this.getItemStateSnapshot(itemId);
+          if (!currentItem) {
+            return null;
+          }
+
+          const draftChanges = {};
+          const comparableFields = ['name', 'quantity', 'unit', 'category', 'price'];
+
+          for (const field of comparableFields) {
+            const payloadChanges = this.normalizeItemPatch(field, this.selectedItem[field]);
+            if (!payloadChanges) {
+              continue;
+            }
+
+            const nextValue = payloadChanges[field];
+            const currentValue = field === 'price'
+              ? this.formatPrice(currentItem.price)
+              : (currentItem[field] ?? null);
+
+            if (nextValue !== currentValue) {
+              draftChanges[field] = nextValue;
+            }
+          }
+
+          return Object.keys(draftChanges).length ? draftChanges : null;
+        },
+
+        stageItemField(itemId, field, value) {
+          if (!itemId) {
+            return;
+          }
+
+          const payloadChanges = this.normalizeItemPatch(field, value);
+          if (!payloadChanges) {
+            const currentItem = this.getItemStateSnapshot(itemId);
+            if (currentItem && this.selectedItem && this.selectedItem.id === itemId) {
+              this.setSelectedItemFromState(currentItem);
+            }
+            return;
+          }
+
+          this.stageItemChanges(itemId, payloadChanges);
+        },
+
+        async commitQuantityField(itemId, value) {
+          if (!itemId) {
+            return;
+          }
+
+          const payloadChanges = this.normalizeItemPatch('quantity', value);
+          if (!payloadChanges) {
+            const currentItem = this.getItemStateSnapshot(itemId);
+            if (currentItem && this.selectedItem && this.selectedItem.id === itemId) {
+              this.setSelectedItemFromState(currentItem);
+            }
+            return;
+          }
+
+          this.stageItemChanges(itemId, payloadChanges, { immediate: true });
+          await this.flushItemChanges(itemId);
+        },
+
+        async commitPriceField(itemId, value) {
+          if (!itemId) {
+            return;
+          }
+
+          const payloadChanges = this.normalizeItemPatch('price', value);
+          if (!payloadChanges) {
+            const currentItem = this.getItemStateSnapshot(itemId);
+            if (currentItem && this.selectedItem && this.selectedItem.id === itemId) {
+              this.setSelectedItemFromState(currentItem);
+            }
+            return;
+          }
+
+          this.stageItemChanges(itemId, payloadChanges, { immediate: true });
+          await this.flushItemChanges(itemId);
+        },
+
+        persistItemField(itemId, field, value) {
+          if (!itemId) {
+            return;
+          }
+
+          const payloadChanges = this.normalizeItemPatch(field, value);
+          if (!payloadChanges) {
+            return;
+          }
+
+          this.stageItemChanges(itemId, payloadChanges, { immediate: true });
+        },
+
+        async saveStoreSelection(itemId, storeId) {
+          if (!itemId) {
+            return;
+          }
+
+          const currentItem = this.getItemStateSnapshot(itemId);
+          if (!currentItem) {
+            return;
+          }
+
+          if (this.selectedItem && this.selectedItem.id === itemId) {
+            this.selectedItem.store_id = storeId;
+            this.selectedItem.store_value = storeId == null ? '' : String(storeId);
+          }
+
+          if (currentItem.store_id === storeId && !this.pendingItemChanges[itemId]) {
+            return;
+          }
+
+          const previousItem = this.applyOptimisticItemUpdate(itemId, { store_id: storeId });
+          this.storeSaveItemId = itemId;
+          const savePromise = (async () => {
+            try {
+              const updated = await this.requestJson(`/api/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ store_id: storeId }),
+              }, 'Unable to update item store.');
+              this.replaceItemInState(updated);
+              await this.fetchItems();
+              if (this.selectedItem && this.selectedItem.id === itemId) {
+                const refreshedItem = this.getItemStateSnapshot(itemId);
+                if (refreshedItem) {
+                  this.setSelectedItemFromState(refreshedItem);
+                }
+              }
+            } catch (err) {
+              if (previousItem) {
+                this.restoreItem(previousItem);
+              }
+              alert(err.message);
+            } finally {
+              if (this.storeSaveItemId === itemId) {
+                this.storeSaveItemId = null;
+              }
+              delete this.pendingItemSavePromises[itemId];
+            }
+          })();
+
+          this.pendingItemSavePromises[itemId] = savePromise;
+          await savePromise;
+        },
+
+        async saveCategorySelection(itemId, categoryName) {
+          if (!itemId) {
+            return;
+          }
+
+          const currentItem = this.getItemStateSnapshot(itemId);
+          if (!currentItem) {
+            return;
+          }
+
+          if (this.selectedItem && this.selectedItem.id === itemId) {
+            this.selectedItem.category = categoryName;
+            this.selectedItem.category_value = categoryName || '';
+          }
+
+          if (currentItem.category === categoryName && !this.pendingItemChanges[itemId]) {
+            return;
+          }
+
+          const previousItem = this.applyOptimisticItemUpdate(itemId, { category: categoryName });
+          this.categorySaveItemId = itemId;
+          const savePromise = (async () => {
+            try {
+              const updated = await this.requestJson(`/api/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ category: categoryName }),
+              }, 'Unable to update item category.');
+              this.replaceItemInState(updated);
+            } catch (err) {
+              if (previousItem) {
+                this.restoreItem(previousItem);
+              }
+              alert(err.message);
+            } finally {
+              if (this.categorySaveItemId === itemId) {
+                this.categorySaveItemId = null;
+              }
+              delete this.pendingItemSavePromises[itemId];
+            }
+          })();
+
+          this.pendingItemSavePromises[itemId] = savePromise;
+          await savePromise;
+        },
+
+        async flushSelectedItemChanges() {
+          const itemId = this.selectedItem?.id;
+          if (!itemId) {
+            return;
+          }
+
+          const draftChanges = this.collectSelectedItemDraftChanges(itemId);
+          if (draftChanges) {
+            this.stageItemChanges(itemId, draftChanges);
+          }
+
+          await this.flushItemChanges(itemId);
+        },
+
+        async flushItemChanges(itemId) {
+          const inFlightPromise = this.pendingItemSavePromises[itemId];
+          if (inFlightPromise) {
+            await inFlightPromise;
+            if (!this.pendingItemChanges[itemId]) {
+              return;
+            }
+          }
+
+          this.clearPendingItemTimer(itemId);
+          const changes = this.pendingItemChanges[itemId];
+          if (!changes) {
+            return;
+          }
+
+          delete this.pendingItemChanges[itemId];
+
+          const savePromise = (async () => {
+            try {
+              const updated = await this.requestJson(`/api/items/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(changes),
+              }, 'Unable to update item.');
+              this.replaceItemInState(updated);
+
+              if (this.pendingItemChanges[itemId]) {
+                this.pendingItemRollback[itemId] = { ...updated };
+              } else {
+                delete this.pendingItemRollback[itemId];
+              }
+            } catch (err) {
+              const rollbackItem = this.pendingItemRollback[itemId];
+              this.clearPendingItemState(itemId);
+              if (rollbackItem) {
+                this.restoreItem(rollbackItem);
+              }
+              alert(err.message);
+              return;
+            } finally {
+              delete this.pendingItemSavePromises[itemId];
+            }
+
+            if (this.pendingItemChanges[itemId]) {
+              await this.flushItemChanges(itemId);
+            }
+          })();
+
+          this.pendingItemSavePromises[itemId] = savePromise;
+          await savePromise;
+        },
+
+        restoreItem(previousItem) {
+          if (!previousItem) {
+            return;
+          }
+
+          this.replaceItemInState(previousItem);
+        },
+
+        removeItemFromState(itemId) {
+          const index = this.items.findIndex(existingItem => existingItem.id === itemId);
+          if (index === -1) {
+            return null;
+          }
+
+          const [removedItem] = this.items.splice(index, 1);
+          if (this.selectedItem && this.selectedItem.id === itemId) {
+            this.selectedItem = null;
+            if (this.panelMode === 'detail') {
+              this.panelOpen = false;
+              this.panelMode = null;
+            }
+          }
+          return { item: removedItem, index };
+        },
+
+        restoreRemovedItem(snapshot) {
+          if (!snapshot) {
+            return;
+          }
+
+          this.items.splice(snapshot.index, 0, snapshot.item);
+        },
+
+        normalizeItemFieldValue(field, value) {
+          if (field === 'store_id') {
+            return value === '' || value === null ? null : value;
+          }
+
+          if (typeof value !== 'string') {
+            return value;
+          }
+
+          const trimmedValue = value.trim();
+          if (field === 'name') {
+            return trimmedValue;
+          }
+
+          return trimmedValue || null;
+        },
+
+        async requestJson(url, options = {}, defaultMessage = 'Request failed.') {
+          const res = await fetch(url, options);
+          const contentType = res.headers.get('content-type') || '';
+          const payload = contentType.includes('application/json') ? await res.json() : null;
+
+          if (!res.ok) {
+            throw new Error(payload?.error || defaultMessage);
+          }
+
+          return payload;
         },
 
         async changePassword() {
@@ -700,52 +1284,62 @@
         },
 
         async fetchItems() {
-          const res = await fetch('/api/items');
-          this.items = await res.json();
+          this.items = await this.requestJson('/api/items', {}, 'Unable to load items.');
         },
 
         async fetchStores() {
-          const res = await fetch('/api/stores');
-          this.stores = await res.json();
+          this.stores = await this.requestJson('/api/stores', {}, 'Unable to load stores.');
+        },
+
+        async fetchCategories() {
+          this.categories = await this.requestJson('/api/categories', {}, 'Unable to load categories.');
+        },
+
+        async refreshStoresSilently() {
+          try {
+            await Promise.all([this.fetchStores(), this.fetchCategories()]);
+          } catch (err) {
+            // Keep current catalog state when background refresh fails.
+          }
         },
 
         async addStore() {
           if (!this.newStoreName.trim()) return;
           try {
-            const res = await fetch('/api/stores', {
+            const createdStore = await this.requestJson('/api/stores', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ name: this.newStoreName.trim() }),
-            });
-            if (!res.ok) {
-              alert('Failed to add store. It may already exist.');
-              return;
-            }
-            const createdStore = await res.json();
+            }, 'Failed to add store.');
             this.stores.push(createdStore);
             this.newStoreName = '';
           } catch (err) {
-            alert('Error adding store: ' + err.message);
+            alert(err.message);
           }
         },
 
         async deleteStore(storeId) {
           if (!confirm('Delete this store? Items using it will have their store cleared.')) return;
+          const previousStores = [...this.stores];
+          const previousItems = this.items.map(item => ({ ...item }));
+          this.stores = this.stores.filter(store => store.id !== storeId);
+          this.items = this.items.map(item => item.store_id === storeId ? { ...item, store_id: null } : item);
+          if (this.selectedItem && this.selectedItem.store_id === storeId) {
+            this.selectedItem = { ...this.selectedItem, store_id: null };
+          }
+
           try {
-            const res = await fetch(`/api/stores/${storeId}`, { method: 'DELETE' });
-            if (!res.ok) {
-              alert('Failed to delete store.');
-              return;
-            }
-            this.stores = this.stores.filter(s => s.id !== storeId);
-            // Clear store_id from items using this store
-            this.items.forEach(item => {
-              if (item.store_id === storeId) {
-                item.store_id = null;
-              }
-            });
+            await this.requestJson(`/api/stores/${storeId}`, { method: 'DELETE' }, 'Failed to delete store.');
           } catch (err) {
-            alert('Error deleting store: ' + err.message);
+            this.stores = previousStores;
+            this.items = previousItems;
+            if (this.selectedItem) {
+              const restoredSelectedItem = previousItems.find(item => item.id === this.selectedItem.id);
+              if (restoredSelectedItem) {
+                this.setSelectedItemFromState(restoredSelectedItem);
+              }
+            }
+            alert(err.message);
           }
         },
 
@@ -756,108 +1350,95 @@
         },
 
         selectItem(item, source = 'click') {
-          if (source === 'click' && Date.now() - this.lastTouchSelectAt < 600) {
-            return;
-          }
+          const itemId = item.id;
+          this.itemSelectionPromise = this.itemSelectionPromise
+            .catch(() => {})
+            .then(async () => {
+              if (source === 'click' && Date.now() - this.lastTouchSelectAt < 600) {
+                return;
+              }
 
-          if (source === 'touch') {
-            this.lastTouchSelectAt = Date.now();
-          }
+              if (source === 'touch') {
+                this.lastTouchSelectAt = Date.now();
+              }
 
-          this.selectedItem = (this.selectedItem && this.selectedItem.id === item.id)
-            ? null
-            : { ...item, price: this.formatPrice(item.price) };
-          if (this.selectedItem) {
-            this.detailTab = 'detail';
-          }
+              await this.flushSelectedItemChanges();
+              const nextItem = this.items.find(existingItem => existingItem.id === itemId) || item;
+              if (this.selectedItem && this.selectedItem.id === itemId && this.panelMode === 'detail' && this.panelOpen) {
+                await this.closeSelectedItem();
+                return;
+              }
+
+              if (this.selectedItem && this.selectedItem.id === itemId) {
+                this.selectedItem = null;
+                return;
+              }
+
+              this.setSelectedItemFromState(nextItem);
+            });
+          return this.itemSelectionPromise;
         },
 
         async checkboxClick(item) {
-          // Select the item (without deselecting if already selected), then toggle
           if (!this.selectedItem || this.selectedItem.id !== item.id) {
-            this.selectedItem = { ...item };
+            this.setSelectedItemFromState(item);
           }
           await this.toggleChecked(item);
         },
 
         async updateField(item, field, value) {
-          if (field === 'name' && !String(value).trim()) return;
-          const res = await fetch(`/api/items/${item.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ [field]: value }),
-          });
-          const updated = await res.json();
-          const idx = this.items.findIndex(i => i.id === item.id);
-          if (idx !== -1) this.items[idx] = updated;
-          if (this.selectedItem && this.selectedItem.id === item.id) this.selectedItem = { ...updated, price: this.formatPrice(updated.price) };
+          this.persistItemField(item.id, field, value);
         },
 
         async updatePrice(item, value) {
-          const formatted = this.formatPrice(value);
-          item.price = formatted;
-          const res = await fetch(`/api/items/${item.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ price: formatted }),
-          });
-          const updated = await res.json();
-          const idx = this.items.findIndex(i => i.id === item.id);
-          if (idx !== -1) this.items[idx] = updated;
-          if (this.selectedItem && this.selectedItem.id === item.id) {
-            this.selectedItem = { ...updated, price: this.formatPrice(updated.price) };
-          }
+          this.persistItemField(item.id, 'price', value);
         },
 
         async updateQuantity(item, newQty) {
-          newQty = Math.min(100, Math.max(1, Math.round(newQty) || 1));
-          item.quantity = newQty;
-          const res = await fetch(`/api/items/${item.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ quantity: newQty }),
-          });
-          const updated = await res.json();
-          const idx = this.items.findIndex(i => i.id === item.id);
-          if (idx !== -1) this.items[idx] = updated;
-          if (this.selectedItem && this.selectedItem.id === item.id) this.selectedItem = { ...updated, price: this.formatPrice(updated.price) };
+          this.stageItemChanges(item.id, this.normalizeItemPatch('quantity', newQty), { immediate: true });
         },
 
         async toggleChecked(item) {
-          const res = await fetch(`/api/items/${item.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ checked: !item.checked }),
-          });
-          const updated = await res.json();
-          const idx = this.items.findIndex(i => i.id === item.id);
-          if (idx !== -1) this.items[idx] = updated;
-          if (this.selectedItem && this.selectedItem.id === item.id) this.selectedItem = { ...updated, price: this.formatPrice(updated.price) };
+          this.stageItemChanges(item.id, { checked: !item.checked }, { immediate: true });
         },
 
         async addItem() {
           if (!this.newItem.name.trim() || !this.newItem.store_id) return;
-          const res = await fetch('/api/items', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: this.newItem.name.trim(),
-              quantity: this.newItem.quantity ? parseFloat(this.newItem.quantity) : 1,
-              unit: this.newItem.unit || null,
-              category: this.newItem.category || null,
-              store_id: this.newItem.store_id,
-              price: 0,
-            }),
-          });
-          const created = await res.json();
-          this.items.push(created);
-          this.newItem = { name: '', quantity: '', unit: '', category: '', store_id: null };
+          try {
+            const created = await this.requestJson('/api/items', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: this.newItem.name.trim(),
+                quantity: this.newItem.quantity ? parseFloat(this.newItem.quantity) : 1,
+                unit: this.newItem.unit || null,
+                category: this.newItem.category || null,
+                store_id: this.newItem.store_id,
+                price: 0,
+              }),
+            }, 'Unable to add item.');
+            this.items.push(created);
+            this.newItem = { name: '', quantity: '', unit: '', category: '', store_id: null };
+            this.panelOpen = false;
+            this.panelMode = null;
+          } catch (err) {
+            alert(err.message);
+          }
         },
 
         async deleteItem(item) {
-          await fetch(`/api/items/${item.id}`, { method: 'DELETE' });
-          this.items = this.items.filter(i => i.id !== item.id);
-          if (this.selectedItem && this.selectedItem.id === item.id) this.selectedItem = null;
+          this.clearPendingItemState(item.id);
+          const removedItem = this.removeItemFromState(item.id);
+          if (!removedItem) {
+            return;
+          }
+
+          try {
+            await this.requestJson(`/api/items/${item.id}`, { method: 'DELETE' }, 'Unable to delete item.');
+          } catch (err) {
+            this.restoreRemovedItem(removedItem);
+            alert(err.message);
+          }
         },
       };
     }

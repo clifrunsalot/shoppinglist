@@ -50,7 +50,7 @@
 
     <section class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <div class="space-y-6">
-        <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
+        <section id="default-stores" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div class="flex items-center justify-between gap-4">
             <div>
               <h2 class="text-xl font-bold text-slate-950">Pending Approvals</h2>
@@ -131,25 +131,47 @@
         <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
           <div>
             <h2 class="text-xl font-bold text-slate-950">Default Stores</h2>
-            <p class="mt-1 text-sm text-slate-500">These stores are copied into each newly approved account. Keep the list ordered to match your preferred shopping flow.</p>
+            <p class="mt-1 text-sm text-slate-500">These stores are copied into each newly approved account and sorted alphabetically.</p>
           </div>
 
-          <form method="post" action="{{ url_for('admin_create_default_store') }}" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[2fr_1fr_auto]">
-            <input type="text" name="name" placeholder="Store name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <input type="number" name="sort_order" min="0" step="1" placeholder="Sort order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+          <form method="post" action="{{ url_for('admin_create_default_store') }}" data-preserve-scroll-form data-scroll-target="default-stores" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_auto]">
+            <input data-testid="default-store-create-name" type="text" name="name" placeholder="Store name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
             <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add Store</button>
           </form>
 
           <div class="mt-5 space-y-3">
             {% for store in default_stores %}
-            <form method="post" action="{{ url_for('admin_update_default_store', store_id=store.id) }}" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[2fr_1fr_auto_auto]">
-              <input type="text" name="name" value="{{ store.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <input type="number" name="sort_order" min="0" step="1" value="{{ store.sort_order }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <form method="post" action="{{ url_for('admin_update_default_store', store_id=store.id) }}" data-preserve-scroll-form data-scroll-target="default-stores" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto_auto]">
+              <input data-testid="default-store-name-{{ store.id }}" type="text" name="name" value="{{ store.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
               <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Save</button>
-              <button formaction="{{ url_for('admin_delete_default_store', store_id=store.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+              <button data-testid="default-store-delete-{{ store.id }}" formaction="{{ url_for('admin_delete_default_store', store_id=store.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
             </form>
             {% else %}
             <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default stores yet.</div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section id="default-categories" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
+          <div>
+            <h2 class="text-xl font-bold text-slate-950">Default Categories</h2>
+            <p class="mt-1 text-sm text-slate-500">Categories are managed centrally and appear as dropdown choices throughout the app.</p>
+          </div>
+
+          <form method="post" action="{{ url_for('admin_create_default_category') }}" data-preserve-scroll-form data-scroll-target="default-categories" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_auto]">
+            <input data-testid="default-category-create-name" type="text" name="name" placeholder="Category name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add Category</button>
+          </form>
+
+          <div class="mt-5 space-y-3">
+            {% for category in default_categories %}
+            <form method="post" action="{{ url_for('admin_update_default_category', category_id=category.id) }}" data-preserve-scroll-form data-scroll-target="default-categories" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto_auto]">
+              <input data-testid="default-category-name-{{ category.id }}" type="text" name="name" value="{{ category.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+              <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Save</button>
+              <button data-testid="default-category-delete-{{ category.id }}" formaction="{{ url_for('admin_delete_default_category', category_id=category.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+            </form>
+            {% else %}
+            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default categories yet.</div>
             {% endfor %}
           </div>
         </section>
@@ -161,18 +183,23 @@
           </div>
 
           <form method="post" action="{{ url_for('admin_create_default_item') }}" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6">
-            <input type="text" name="name" placeholder="Item name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2" />
-            <input type="number" name="quantity" step="0.1" min="0" placeholder="Quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <input type="text" name="unit" placeholder="Unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <input type="text" name="category" placeholder="Category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <input type="number" name="sort_order" min="0" step="1" placeholder="Sort order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <select name="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2">
+            <input data-testid="default-item-create-name" type="text" name="name" placeholder="Item name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2" />
+            <input data-testid="default-item-create-quantity" type="number" name="quantity" step="0.1" min="0" placeholder="Quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <input data-testid="default-item-create-unit" type="text" name="unit" placeholder="Unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <select data-testid="default-item-create-category" name="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+              <option value="">No category</option>
+              {% for category in default_categories %}
+              <option value="{{ category.name }}">{{ category.name }}</option>
+              {% endfor %}
+            </select>
+            <input data-testid="default-item-create-sort-order" type="number" name="sort_order" min="0" step="1" placeholder="Sort order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <select data-testid="default-item-create-store-template" name="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2">
               <option value="">No store</option>
               {% for store in default_stores %}
               <option value="{{ store.id }}">{{ store.name }}</option>
               {% endfor %}
             </select>
-            <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800 md:col-span-4">Add Default Item</button>
+            <button data-testid="default-item-create-submit" type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800 md:col-span-4">Add Default Item</button>
           </form>
 
           <div class="mt-5 space-y-3">
@@ -181,7 +208,12 @@
               <input type="text" name="name" value="{{ item.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2" />
               <input type="number" name="quantity" step="0.1" min="0" value="{{ item.quantity }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
               <input type="text" name="unit" value="{{ item.unit or '' }}" placeholder="Unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <input type="text" name="category" value="{{ item.category or '' }}" placeholder="Category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+              <select name="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                <option value="">No category</option>
+                {% for category in default_categories %}
+                <option value="{{ category.name }}" {% if item.category == category.name %}selected{% endif %}>{{ category.name }}</option>
+                {% endfor %}
+              </select>
               <input type="number" name="sort_order" min="0" step="1" value="{{ item.sort_order }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
               <select name="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2">
                 <option value="">No store</option>
@@ -214,34 +246,35 @@
             <button type="submit" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save Default Theme</button>
           </form>
         </section>
-
-        <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
-          <div>
-            <h2 class="text-xl font-bold text-slate-950">Recent Activity</h2>
-            <p class="mt-1 text-sm text-slate-500">Audit entries record account approvals, password resets, theme updates, and default list changes.</p>
-          </div>
-          <div class="mt-5 space-y-3">
-            {% for entry in audit_logs %}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div class="text-sm font-semibold text-slate-900">{{ entry.summary }}</div>
-              <div class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ entry.action }}</div>
-              <div class="mt-2 text-xs text-slate-500">
-                {% if entry.actor %}By {{ entry.actor.email }}{% else %}System{% endif %}
-                {% if entry.created_at %} on {{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
-              </div>
-            </div>
-            {% else %}
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No audit entries yet.</div>
-            {% endfor %}
-          </div>
-        </section>
       </div>
     </section>
   </main>
   <script>
+    const adminScrollStorageKey = 'shoppinglist-admin-scroll-target';
     const logoutForm = document.querySelector('[data-logout-form]');
     const logoutButton = document.querySelector('[data-logout-button]');
     const copyPasswordButtons = document.querySelectorAll('[data-copy-temp-password]');
+    const preserveScrollForms = document.querySelectorAll('[data-preserve-scroll-form]');
+
+    function restoreAdminScrollPosition() {
+      const savedTarget = window.sessionStorage.getItem(adminScrollStorageKey);
+      if (!savedTarget) {
+        return;
+      }
+
+      window.sessionStorage.removeItem(adminScrollStorageKey);
+      const target = document.getElementById(savedTarget);
+      if (!target) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        target.scrollIntoView({ block: 'start' });
+        if (window.location.hash !== `#${savedTarget}`) {
+          window.history.replaceState(null, '', `#${savedTarget}`);
+        }
+      });
+    }
 
     if (logoutForm && logoutButton) {
       logoutForm.addEventListener('submit', () => {
@@ -249,6 +282,17 @@
         logoutButton.textContent = 'Signing Out...';
       });
     }
+
+    preserveScrollForms.forEach((form) => {
+      form.addEventListener('submit', () => {
+        const target = form.getAttribute('data-scroll-target');
+        if (target) {
+          window.sessionStorage.setItem(adminScrollStorageKey, target);
+        }
+      });
+    });
+
+    restoreAdminScrollPosition();
 
     async function copyText(text) {
       if (navigator.clipboard && window.isSecureContext) {

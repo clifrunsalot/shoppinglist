@@ -10,40 +10,17 @@
 </head>
 
 <body class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.16),_transparent_40%),linear-gradient(180deg,_#f8fafc_0%,_#ecfeff_100%)] text-slate-900">
-  <main class="mx-auto flex min-h-screen max-w-6xl items-center px-6 py-10">
-    <div class="grid w-full gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
-      <section class="space-y-6">
-        <span class="inline-flex rounded-full border border-teal-200 bg-white/80 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-teal-700 shadow-sm">
-          Private access
-        </span>
-        <div class="space-y-4">
-          <h1 class="max-w-xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
-            Sign in to your grocery list.
-          </h1>
-          <p class="max-w-xl text-base leading-7 text-slate-600 sm:text-lg">
-            This app now requires an authorized account. Use an email and password created by an administrator, then manage your own private stores and items.
-          </p>
-        </div>
-        <div class="grid gap-4 sm:grid-cols-3">
-          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
-            <div class="text-sm font-semibold text-slate-900">Private lists</div>
-            <p class="mt-2 text-sm leading-6 text-slate-600">Each account sees only its own stores and shopping items.</p>
-          </div>
-          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
-            <div class="text-sm font-semibold text-slate-900">Server sessions</div>
-            <p class="mt-2 text-sm leading-6 text-slate-600">The browser stays simple while Flask handles authenticated sessions.</p>
-          </div>
-          <div class="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_-35px_rgba(15,23,42,0.45)] backdrop-blur">
-            <div class="text-sm font-semibold text-slate-900">Controlled access</div>
-            <p class="mt-2 text-sm leading-6 text-slate-600">New users are created by an administrator instead of open self-signup.</p>
-          </div>
-        </div>
-      </section>
+  <main class="mx-auto flex min-h-screen max-w-xl items-center justify-center px-5 py-4 sm:px-6 sm:py-6">
+      <div class="w-full space-y-4">
+      <div class="text-center">
+        <h1 class="text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">Grocery List</h1>
+        <p class="mt-1.5 text-sm leading-5 text-slate-500">Sign in to manage your private stores and shopping items.</p>
+      </div>
 
-      <section class="rounded-[2rem] border border-white/70 bg-white/85 p-8 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.45)] backdrop-blur">
-        <div class="mb-6 space-y-2">
+      <section class="w-full rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.45)] backdrop-blur sm:p-7">
+        <div class="mb-4 space-y-1.5">
           <h2 class="text-2xl font-bold text-slate-950">Welcome back</h2>
-          <p class="text-sm leading-6 text-slate-500">Use your authorized account to continue.</p>
+          <p class="text-sm leading-5 text-slate-500">Use your authorized account to continue.</p>
         </div>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
@@ -64,7 +41,7 @@
         </div>
         {% endif %}
 
-        <form method="post" class="space-y-4">
+        <form method="post" class="space-y-3">
           <input type="hidden" name="next" value="{{ next_target }}" />
           <div>
             <label for="email" class="mb-2 block text-sm font-semibold text-slate-700">Email</label>
@@ -88,12 +65,12 @@
           </button>
         </form>
 
-        <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
+        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-5 text-slate-600">
           Need an account? Request access below or ask an administrator to create one for you.
         </div>
 
-        <form method="post" action="{{ url_for('signup') }}" class="mt-4 space-y-4 rounded-2xl border border-slate-200 bg-white/80 p-4">
-          <div>
+        <form method="post" action="{{ url_for('signup') }}" class="mt-3 space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
+          <div class="space-y-1">
             <h3 class="text-base font-semibold text-slate-900">Request Access</h3>
             <p class="mt-1 text-sm text-slate-500">Submit your email and an administrator can approve your account and issue a temporary password.</p>
           </div>
@@ -105,10 +82,6 @@
             Request Approval
           </button>
         </form>
-
-        <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-          Administrators can still create accounts directly on the server with <span class="font-semibold text-slate-900">flask create-user EMAIL</span>.
-        </div>
       </section>
     </div>
   </main>

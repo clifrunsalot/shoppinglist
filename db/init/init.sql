@@ -25,6 +25,14 @@ CREATE TABLE IF NOT EXISTS default_store_templates (
   CONSTRAINT uq_default_store_template_name UNIQUE (name)
 );
 
+CREATE TABLE IF NOT EXISTS default_category_templates (
+  id SERIAL PRIMARY KEY,
+  template_key VARCHAR(36) NOT NULL UNIQUE,
+  name VARCHAR(60) NOT NULL,
+  created_at TIMESTAMP DEFAULT now(),
+  CONSTRAINT uq_default_category_template_name UNIQUE (name)
+);
+
 CREATE TABLE IF NOT EXISTS default_item_templates (
   id SERIAL PRIMARY KEY,
   template_key VARCHAR(36) NOT NULL UNIQUE,
@@ -81,9 +89,18 @@ INSERT INTO alembic_version (version_num)
 VALUES ('3c6a0bb190a1')
 ON CONFLICT (version_num) DO NOTHING;
 
+UPDATE alembic_version
+SET version_num = '1d2d3c4b5e6f'
+WHERE version_num = '3c6a0bb190a1';
+
 INSERT INTO app_settings (key, value)
 VALUES ('default_theme', 'meadow')
 ON CONFLICT (key) DO NOTHING;
+
+INSERT INTO default_category_templates (template_key, name) VALUES
+  ('dflt-cat-0001-food',     'Food'),
+  ('dflt-cat-0002-non-food', 'Non-Food')
+ON CONFLICT (template_key) DO NOTHING;
 
 INSERT INTO default_item_templates (template_key, name, quantity, unit, category, sort_order) VALUES
   ('dflt-0001-rice',                   'Rice',                   25,   'lb',    'Food',      10),

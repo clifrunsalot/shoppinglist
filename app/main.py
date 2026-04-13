@@ -11,12 +11,13 @@ from flask_login import LoginManager, current_user, login_required, login_user, 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.db import db, migrate
-from app.models import AppSetting, AuditLog, DefaultItemTemplate, DefaultStoreTemplate, Item, Store, User
+from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, Store, User
 
 
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_ITEM_NAME_LENGTH = 255
 THEME_OPTIONS = ('meadow', 'ocean', 'sunset', 'berry')
+UNKNOWN_STORE_NAME = 'unknown'
 
 
 def env_flag(name, default=False):
@@ -40,6 +41,28 @@ def build_database_uri():
 
 def error_response(message, status_code):
     return jsonify({'error': message}), status_code
+
+
+def error_message(error):
+    response, _ = error
+    payload = response.get_json(silent=True) or {}
+    return payload.get('error', 'request failed')
+
+
+def default_store_ordering():
+    return (DefaultStoreTemplate.name.asc(), DefaultStoreTemplate.id.asc())
+
+
+def default_category_ordering():
+    return (DefaultCategoryTemplate.name.asc(), DefaultCategoryTemplate.id.asc())
+
+
+def admin_default_stores_anchor():
+    return f"{url_for('admin_dashboard')}#default-stores"
+
+
+def admin_default_categories_anchor():
+    return f"{url_for('admin_dashboard')}#default-categories"
 
 
 def wants_json_response():
@@ -94,8 +117,8 @@ def parse_quantity(value):
     if not isfinite(quantity):
         return None, error_response('quantity must be a finite number', 400)
 
-    if quantity < 0:
-        return None, error_response('quantity must be greater than or equal to 0', 400)
+    if quantity <= 0:
+        return None, error_response('quantity must be greater than 0', 400)
 
     return quantity, None
 
@@ -178,6 +201,10 @@ def create_app(config_overrides=None):
         SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-key-change-me'),
         SQLALCHEMY_DATABASE_URI=build_database_uri(),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        SQLALCHEMY_ENGINE_OPTIONS={
+            'pool_pre_ping': True,
+            'pool_recycle': 1800,
+        },
         MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
@@ -235,15 +262,11 @@ def create_app(config_overrides=None):
         created_stores = 0
         created_items = 0
 
-        templates = DefaultStoreTemplate.query.order_by(
-            DefaultStoreTemplate.sort_order.asc(),
-            DefaultStoreTemplate.name.asc(),
-            DefaultStoreTemplate.id.asc(),
-        ).all()
-        for template in templates:
+        templates = DefaultStoreTemplate.query.order_by(*default_store_ordering()).all()
+        for index, template in enumerate(templates, start=1):
             store = Store(
                 name=template.name,
-                sort_order=template.sort_order,
+                sort_order=index * 10,
                 user_id=user.id,
                 template_store_id=template.id,
             )
@@ -276,6 +299,262 @@ def create_app(config_overrides=None):
 
         return {'stores': created_stores, 'items': created_items}
 
+    def create_missing_default_store_for_user(user, template):
+        existing_store = Store.query.filter_by(user_id=user.id, template_store_id=template.id).first()
+        if existing_store is not None:
+            return None
+
+        next_sort_order = (db.session.query(db.func.max(Store.sort_order)).filter_by(user_id=user.id).scalar() or 0) + 10
+        store = Store(
+            name=template.name,
+            sort_order=next_sort_order,
+            user_id=user.id,
+            template_store_id=template.id,
+        )
+        db.session.add(store)
+        db.session.flush()
+        return store
+
+    def get_or_create_unknown_store_for_user(user_id):
+        unknown_store = Store.query.filter_by(user_id=user_id, template_store_id=None, name=UNKNOWN_STORE_NAME).first()
+        if unknown_store is not None:
+            return unknown_store
+
+        next_sort_order = (db.session.query(db.func.max(Store.sort_order)).filter_by(user_id=user_id).scalar() or 0) + 10
+        unknown_store = Store(name=UNKNOWN_STORE_NAME, sort_order=next_sort_order, user_id=user_id)
+        db.session.add(unknown_store)
+        db.session.flush()
+        return unknown_store
+
+    def create_missing_default_item_for_user(user, template):
+        existing_item = Item.query.filter_by(user_id=user.id, template_item_id=template.id).first()
+        if existing_item is not None:
+            return None, False
+
+        matching_item = find_user_item_by_name(user.id, template.name)
+        if matching_item is not None:
+            if matching_item.template_item_id is None:
+                matching_item.template_item_id = template.id
+                db.session.flush()
+                return matching_item, True
+            return None, False
+
+        store_id = None
+        if template.store_template_id is not None:
+            store = Store.query.filter_by(user_id=user.id, template_store_id=template.store_template_id).first()
+            if store is not None:
+                store_id = store.id
+
+        item = Item(
+            name=template.name,
+            quantity=template.quantity,
+            unit=template.unit,
+            category=template.category,
+            sort_order=template.sort_order,
+            price=Decimal('0.00'),
+            checked=False,
+            user_id=user.id,
+            store_id=store_id,
+            template_item_id=template.id,
+        )
+        db.session.add(item)
+        db.session.flush()
+        return item, False
+
+    def merge_item_records(primary_item, duplicate_item):
+        if primary_item.template_item_id is None and duplicate_item.template_item_id is not None:
+            primary_item.template_item_id = duplicate_item.template_item_id
+        if primary_item.store_id is None and duplicate_item.store_id is not None:
+            primary_item.store_id = duplicate_item.store_id
+        if not primary_item.unit and duplicate_item.unit:
+            primary_item.unit = duplicate_item.unit
+        if not primary_item.category and duplicate_item.category:
+            primary_item.category = duplicate_item.category
+        if (primary_item.price is None or Decimal(primary_item.price or 0) <= 0) and Decimal(duplicate_item.price or 0) > 0:
+            primary_item.price = duplicate_item.price
+        if not primary_item.checked and duplicate_item.checked:
+            primary_item.checked = duplicate_item.checked
+
+    def deduplicate_user_items_for_user(user_id):
+        items = Item.query.filter_by(user_id=user_id).order_by(Item.id.asc()).all()
+        if not items:
+            return False
+
+        changed = False
+        by_template_id = {}
+        items_to_delete = []
+
+        for item in items:
+            if item.template_item_id is None:
+                continue
+            primary_item = by_template_id.get(item.template_item_id)
+            if primary_item is None:
+                by_template_id[item.template_item_id] = item
+                continue
+            merge_item_records(primary_item, item)
+            items_to_delete.append(item)
+            changed = True
+
+        remaining_items = [item for item in items if item not in items_to_delete]
+        by_name = {}
+        for item in remaining_items:
+            normalized_name = (item.name or '').strip().lower()
+            if not normalized_name:
+                continue
+            primary_item = by_name.get(normalized_name)
+            if primary_item is None:
+                by_name[normalized_name] = item
+                continue
+            merge_item_records(primary_item, item)
+            items_to_delete.append(item)
+            changed = True
+
+        for item in items_to_delete:
+            db.session.delete(item)
+
+        return changed
+
+    def deduplicate_all_user_items():
+        user_ids = [user_id for (user_id,) in db.session.query(Item.user_id).filter(Item.user_id.is_not(None)).distinct().all()]
+        changed = False
+        for user_id in user_ids:
+            changed = deduplicate_user_items_for_user(user_id) or changed
+        return changed
+
+    def deduplicate_default_item_templates():
+        templates = DefaultItemTemplate.query.order_by(DefaultItemTemplate.name.asc(), DefaultItemTemplate.id.asc()).all()
+        if not templates:
+            return False
+
+        changed = False
+        grouped_templates = {}
+        for template in templates:
+            normalized_name = (template.name or '').strip().lower()
+            grouped_templates.setdefault(normalized_name, []).append(template)
+
+        for duplicates in grouped_templates.values():
+            if len(duplicates) < 2:
+                continue
+
+            ordered_duplicates = sorted(
+                duplicates,
+                key=lambda template: (template.name != template.name.strip(), template.id),
+            )
+            primary_template = ordered_duplicates[0]
+            primary_template.name = primary_template.name.strip()
+
+            for duplicate_template in ordered_duplicates[1:]:
+                affected_items = Item.query.filter_by(template_item_id=duplicate_template.id).order_by(Item.id.asc()).all()
+                for item in affected_items:
+                    primary_item = Item.query.filter_by(user_id=item.user_id, template_item_id=primary_template.id).first()
+                    if primary_item is not None:
+                        merge_item_records(primary_item, item)
+                        db.session.delete(item)
+                    else:
+                        item.template_item_id = primary_template.id
+                db.session.delete(duplicate_template)
+                changed = True
+
+        changed = deduplicate_all_user_items() or changed
+        return changed
+
+    def ensure_user_has_default_stores(user):
+        templates = DefaultStoreTemplate.query.order_by(*default_store_ordering()).all()
+        template_ids = {template.id for template in templates}
+        existing_stores = Store.query.filter_by(user_id=user.id).order_by(Store.sort_order.asc(), Store.id.asc()).all()
+
+        template_store_by_id = {}
+        extra_stores = []
+        unknown_store = None
+        for store in existing_stores:
+            if store.template_store_id is None and store.name == UNKNOWN_STORE_NAME:
+                if unknown_store is None:
+                    unknown_store = store
+                else:
+                    extra_stores.append(store)
+                continue
+            if store.template_store_id not in template_ids:
+                extra_stores.append(store)
+                continue
+            if store.template_store_id in template_store_by_id:
+                extra_stores.append(store)
+                continue
+            template_store_by_id[store.template_store_id] = store
+
+        created_stores = []
+        for template in templates:
+            store = template_store_by_id.get(template.id)
+            if store is None:
+                store = create_missing_default_store_for_user(user, template)
+                template_store_by_id[template.id] = store
+                created_stores.append(store)
+
+        updated = False
+        for index, template in enumerate(templates, start=1):
+            store = template_store_by_id.get(template.id)
+            if store is None:
+                continue
+            expected_sort_order = index * 10
+            if store.name != template.name:
+                store.name = template.name
+                updated = True
+            if store.sort_order != expected_sort_order:
+                store.sort_order = expected_sort_order
+                updated = True
+            if store.template_store_id != template.id:
+                store.template_store_id = template.id
+                updated = True
+
+        if extra_stores:
+            redirect_to_unknown = [store.id for store in extra_stores if store.name != UNKNOWN_STORE_NAME or store.template_store_id is not None]
+            if redirect_to_unknown:
+                unknown_store = unknown_store or get_or_create_unknown_store_for_user(user.id)
+                Item.query.filter(Item.user_id == user.id, Item.store_id.in_(redirect_to_unknown)).update({'store_id': unknown_store.id}, synchronize_session=False)
+            for store in extra_stores:
+                db.session.delete(store)
+            updated = True
+
+        if unknown_store is not None:
+            expected_unknown_sort_order = (len(templates) + 1) * 10
+            if unknown_store.name != UNKNOWN_STORE_NAME:
+                unknown_store.name = UNKNOWN_STORE_NAME
+                updated = True
+            if unknown_store.sort_order != expected_unknown_sort_order:
+                unknown_store.sort_order = expected_unknown_sort_order
+                updated = True
+
+        if created_stores or updated:
+            db.session.commit()
+
+        return created_stores
+
+    def ensure_user_has_default_items(user):
+        changed = deduplicate_user_items_for_user(user.id)
+        templates = DefaultItemTemplate.query.order_by(
+            DefaultItemTemplate.sort_order.asc(),
+            DefaultItemTemplate.name.asc(),
+            DefaultItemTemplate.id.asc(),
+        ).all()
+
+        created_items = []
+        linked_existing_items = False
+        for template in templates:
+            item, linked_existing = create_missing_default_item_for_user(user, template)
+            if item is not None and not linked_existing:
+                created_items.append(item)
+            linked_existing_items = linked_existing_items or linked_existing
+
+        if created_items or linked_existing_items or changed:
+            db.session.commit()
+
+        return created_items
+
+    def stores_are_admin_managed_error():
+        return error_response('stores are managed by an administrator', 403)
+
+    def categories_are_admin_managed_error():
+        return error_response('categories are managed by an administrator', 403)
+
     def serialize(item):
         return {
             'id': item.id,
@@ -295,6 +574,57 @@ def create_app(config_overrides=None):
             'id': store.id,
             'name': store.name,
         }
+
+    def serialize_category(category):
+        return {
+            'id': category.id,
+            'name': category.name,
+        }
+
+    def find_user_store_by_name(user_id, name):
+        return Store.query.filter(
+            Store.user_id == user_id,
+            db.func.lower(Store.name) == name.lower(),
+        ).first()
+
+    def find_user_item_by_name(user_id, name, *, exclude_item_id=None):
+        query = Item.query.filter(
+            Item.user_id == user_id,
+            db.func.lower(Item.name) == name.lower(),
+        )
+        if exclude_item_id is not None:
+            query = query.filter(Item.id != exclude_item_id)
+        return query.first()
+
+    def find_default_item_template_by_name(name, *, exclude_item_id=None):
+        query = DefaultItemTemplate.query.filter(
+            db.func.lower(DefaultItemTemplate.name) == name.lower(),
+        )
+        if exclude_item_id is not None:
+            query = query.filter(DefaultItemTemplate.id != exclude_item_id)
+        return query.first()
+
+    def find_default_category_template_by_name(name, *, exclude_category_id=None):
+        normalized_name = (name or '').strip()
+        if not normalized_name:
+            return None
+
+        query = DefaultCategoryTemplate.query.filter(
+            db.func.lower(DefaultCategoryTemplate.name) == normalized_name.lower(),
+        )
+        if exclude_category_id is not None:
+            query = query.filter(DefaultCategoryTemplate.id != exclude_category_id)
+        return query.first()
+
+    def parse_category_name(value):
+        category, error = normalize_text_field(value, 'category', 60)
+        if error:
+            return None, error
+        if category is None:
+            return None, None
+        if find_default_category_template_by_name(category) is None:
+            return None, error_response('category must reference an existing category', 400)
+        return category, None
 
     def parse_store_id(value):
         if value in (None, ''):
@@ -465,13 +795,15 @@ def create_app(config_overrides=None):
     @login_required
     @admin_required
     def admin_dashboard():
+        if deduplicate_default_item_templates():
+            db.session.commit()
         return render_template(
             'admin.html',
             users=User.query.order_by(User.email.asc()).all(),
             pending_users=User.query.filter_by(is_approved=False).order_by(User.created_at.desc()).all(),
-            default_stores=DefaultStoreTemplate.query.order_by(DefaultStoreTemplate.sort_order.asc(), DefaultStoreTemplate.name.asc()).all(),
+            default_stores=DefaultStoreTemplate.query.order_by(*default_store_ordering()).all(),
+            default_categories=DefaultCategoryTemplate.query.order_by(*default_category_ordering()).all(),
             default_items=DefaultItemTemplate.query.order_by(DefaultItemTemplate.sort_order.asc(), DefaultItemTemplate.name.asc()).all(),
-            audit_logs=AuditLog.query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(50).all(),
             current_default_theme=get_default_theme(),
             theme_options=THEME_OPTIONS,
         )
@@ -499,24 +831,32 @@ def create_app(config_overrides=None):
         name, error = normalize_text_field(request.form.get('name'), 'name', 100, required=True)
         if error:
             flash('A store name is required.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
         if DefaultStoreTemplate.query.filter_by(name=name).first() is not None:
             flash('That default store already exists.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
 
-        try:
-            sort_order = parse_sort_order(request.form.get('sort_order'), default=0)
-        except ValueError as exc:
-            flash(str(exc), 'error')
-            return redirect(url_for('admin_dashboard'))
-
-        store = DefaultStoreTemplate(name=name, sort_order=sort_order)
+        store = DefaultStoreTemplate(name=name, sort_order=0)
         db.session.add(store)
         db.session.flush()
-        record_audit('default_store.created', 'default_store', f'Created default store {name}.', actor=current_user, target_id=store.id, details={'sort_order': sort_order})
+        copied_user_ids = []
+        existing_users = User.query.filter_by(is_approved=True, is_active=True).all()
+        for user in existing_users:
+            created_store = create_missing_default_store_for_user(user, store)
+            if created_store is not None:
+                copied_user_ids.append(user.id)
+
+        record_audit(
+            'default_store.created',
+            'default_store',
+            f'Created default store {name}.',
+            actor=current_user,
+            target_id=store.id,
+            details={'copied_user_ids': copied_user_ids},
+        )
         db.session.commit()
         flash('Default store added.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_stores_anchor())
 
     @app.route('/admin/default-stores/<int:store_id>/update', methods=['POST'])
     @login_required
@@ -525,31 +865,27 @@ def create_app(config_overrides=None):
         store = db.session.get(DefaultStoreTemplate, store_id)
         if store is None:
             flash('Default store not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
 
         name, error = normalize_text_field(request.form.get('name'), 'name', 100, required=True)
         if error:
             flash('A store name is required.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
 
         duplicate = DefaultStoreTemplate.query.filter_by(name=name).first()
         if duplicate is not None and duplicate.id != store.id:
             flash('That default store name is already in use.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
 
-        try:
-            sort_order = parse_sort_order(request.form.get('sort_order'), default=store.sort_order)
-        except ValueError as exc:
-            flash(str(exc), 'error')
-            return redirect(url_for('admin_dashboard'))
-
-        previous = {'name': store.name, 'sort_order': store.sort_order}
+        previous = {'name': store.name}
         store.name = name
-        store.sort_order = sort_order
-        record_audit('default_store.updated', 'default_store', f'Updated default store {name}.', actor=current_user, target_id=store.id, details={'before': previous, 'after': {'name': name, 'sort_order': sort_order}})
+        store.sort_order = 0
+        for user_store in Store.query.filter_by(template_store_id=store.id).all():
+            user_store.name = name
+        record_audit('default_store.updated', 'default_store', f'Updated default store {name}.', actor=current_user, target_id=store.id, details={'before': previous, 'after': {'name': name}})
         db.session.commit()
         flash('Default store updated.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_stores_anchor())
 
     @app.route('/admin/default-stores/<int:store_id>/delete', methods=['POST'])
     @login_required
@@ -558,17 +894,123 @@ def create_app(config_overrides=None):
         store = db.session.get(DefaultStoreTemplate, store_id)
         if store is None:
             flash('Default store not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_stores_anchor())
 
         affected_items = DefaultItemTemplate.query.filter_by(store_template_id=store.id).all()
         for item in affected_items:
             item.store_template_id = None
 
-        record_audit('default_store.deleted', 'default_store', f'Deleted default store {store.name}.', actor=current_user, target_id=store.id, details={'affected_item_ids': [item.id for item in affected_items]})
+        affected_user_stores = Store.query.filter_by(template_store_id=store.id).all()
+        affected_user_store_ids = [user_store.id for user_store in affected_user_stores]
+        if affected_user_store_ids:
+            for user_store in affected_user_stores:
+                unknown_store = get_or_create_unknown_store_for_user(user_store.user_id)
+                Item.query.filter_by(store_id=user_store.id, user_id=user_store.user_id).update({'store_id': unknown_store.id}, synchronize_session=False)
+                db.session.delete(user_store)
+
+        record_audit(
+            'default_store.deleted',
+            'default_store',
+            f'Deleted default store {store.name}.',
+            actor=current_user,
+            target_id=store.id,
+            details={
+                'affected_item_ids': [item.id for item in affected_items],
+                'affected_user_store_ids': affected_user_store_ids,
+            },
+        )
         db.session.delete(store)
         db.session.commit()
         flash('Default store deleted.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_stores_anchor())
+
+    @app.route('/admin/default-categories', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_create_default_category():
+        name, error = normalize_text_field(request.form.get('name'), 'name', 60, required=True)
+        if error:
+            flash('A category name is required.', 'error')
+            return redirect(admin_default_categories_anchor())
+        if find_default_category_template_by_name(name) is not None:
+            flash('That default category already exists.', 'error')
+            return redirect(admin_default_categories_anchor())
+
+        category = DefaultCategoryTemplate(name=name)
+        db.session.add(category)
+        db.session.flush()
+        record_audit(
+            'default_category.created',
+            'default_category',
+            f'Created default category {name}.',
+            actor=current_user,
+            target_id=category.id,
+        )
+        db.session.commit()
+        flash('Default category added.', 'success')
+        return redirect(admin_default_categories_anchor())
+
+    @app.route('/admin/default-categories/<int:category_id>/update', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_update_default_category(category_id):
+        category = db.session.get(DefaultCategoryTemplate, category_id)
+        if category is None:
+            flash('Default category not found.', 'error')
+            return redirect(admin_default_categories_anchor())
+
+        name, error = normalize_text_field(request.form.get('name'), 'name', 60, required=True)
+        if error:
+            flash('A category name is required.', 'error')
+            return redirect(admin_default_categories_anchor())
+
+        duplicate = find_default_category_template_by_name(name, exclude_category_id=category.id)
+        if duplicate is not None:
+            flash('That default category name is already in use.', 'error')
+            return redirect(admin_default_categories_anchor())
+
+        previous = {'name': category.name}
+        previous_name = category.name
+        category.name = name
+        DefaultItemTemplate.query.filter(db.func.lower(DefaultItemTemplate.category) == previous_name.lower()).update({'category': name}, synchronize_session=False)
+        Item.query.filter(db.func.lower(Item.category) == previous_name.lower()).update({'category': name}, synchronize_session=False)
+        record_audit(
+            'default_category.updated',
+            'default_category',
+            f'Updated default category {name}.',
+            actor=current_user,
+            target_id=category.id,
+            details={'before': previous, 'after': {'name': name}},
+        )
+        db.session.commit()
+        flash('Default category updated.', 'success')
+        return redirect(admin_default_categories_anchor())
+
+    @app.route('/admin/default-categories/<int:category_id>/delete', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_delete_default_category(category_id):
+        category = db.session.get(DefaultCategoryTemplate, category_id)
+        if category is None:
+            flash('Default category not found.', 'error')
+            return redirect(admin_default_categories_anchor())
+
+        default_item_ids = [item_id for (item_id,) in db.session.query(DefaultItemTemplate.id).filter(db.func.lower(DefaultItemTemplate.category) == category.name.lower()).all()]
+        item_ids = [item_id for (item_id,) in db.session.query(Item.id).filter(db.func.lower(Item.category) == category.name.lower()).all()]
+        DefaultItemTemplate.query.filter(db.func.lower(DefaultItemTemplate.category) == category.name.lower()).update({'category': None}, synchronize_session=False)
+        Item.query.filter(db.func.lower(Item.category) == category.name.lower()).update({'category': None}, synchronize_session=False)
+        record_audit(
+            'default_category.deleted',
+            'default_category',
+            f'Deleted default category {category.name}.',
+            actor=current_user,
+            target_id=category.id,
+            details={'affected_default_item_ids': default_item_ids, 'affected_item_ids': item_ids},
+        )
+        db.session.delete(category)
+        db.session.commit()
+        flash('Default category deleted.', 'success')
+        return redirect(admin_default_categories_anchor())
 
     @app.route('/admin/default-items', methods=['POST'])
     @login_required
@@ -578,10 +1020,13 @@ def create_app(config_overrides=None):
         if error:
             flash('An item name is required.', 'error')
             return redirect(url_for('admin_dashboard'))
+        if find_default_item_template_by_name(name) is not None:
+            flash('That default item already exists.', 'error')
+            return redirect(url_for('admin_dashboard'))
 
         quantity, quantity_error = parse_quantity(request.form.get('quantity'))
         if quantity_error:
-            flash('Quantity must be a finite number.', 'error')
+            flash(f"{error_message(quantity_error).capitalize()}.", 'error')
             return redirect(url_for('admin_dashboard'))
 
         unit, unit_error = normalize_text_field(request.form.get('unit'), 'unit', 30)
@@ -589,9 +1034,9 @@ def create_app(config_overrides=None):
             flash('Unit is too long.', 'error')
             return redirect(url_for('admin_dashboard'))
 
-        category, category_error = normalize_text_field(request.form.get('category'), 'category', 60)
+        category, category_error = parse_category_name(request.form.get('category'))
         if category_error:
-            flash('Category is too long.', 'error')
+            flash('Choose a valid default category.', 'error')
             return redirect(url_for('admin_dashboard'))
 
         try:
@@ -614,7 +1059,13 @@ def create_app(config_overrides=None):
         item = DefaultItemTemplate(name=name, quantity=quantity, unit=unit, category=category, sort_order=sort_order, store_template_id=store_template_id)
         db.session.add(item)
         db.session.flush()
-        record_audit('default_item.created', 'default_item', f'Created default item {name}.', actor=current_user, target_id=item.id, details={'sort_order': sort_order, 'store_template_id': store_template_id})
+        copied_user_ids = []
+        existing_users = User.query.filter_by(is_approved=True, is_active=True).all()
+        for user in existing_users:
+            created_item, linked_existing = create_missing_default_item_for_user(user, item)
+            if created_item is not None and not linked_existing:
+                copied_user_ids.append(user.id)
+        record_audit('default_item.created', 'default_item', f'Created default item {name}.', actor=current_user, target_id=item.id, details={'sort_order': sort_order, 'store_template_id': store_template_id, 'copied_user_ids': copied_user_ids})
         db.session.commit()
         flash('Default item added.', 'success')
         return redirect(url_for('admin_dashboard'))
@@ -632,10 +1083,13 @@ def create_app(config_overrides=None):
         if error:
             flash('An item name is required.', 'error')
             return redirect(url_for('admin_dashboard'))
+        if find_default_item_template_by_name(name, exclude_item_id=item.id) is not None:
+            flash('That default item name is already in use.', 'error')
+            return redirect(url_for('admin_dashboard'))
 
         quantity, quantity_error = parse_quantity(request.form.get('quantity'))
         if quantity_error:
-            flash('Quantity must be a finite number.', 'error')
+            flash(f"{error_message(quantity_error).capitalize()}.", 'error')
             return redirect(url_for('admin_dashboard'))
 
         unit, unit_error = normalize_text_field(request.form.get('unit'), 'unit', 30)
@@ -643,9 +1097,9 @@ def create_app(config_overrides=None):
             flash('Unit is too long.', 'error')
             return redirect(url_for('admin_dashboard'))
 
-        category, category_error = normalize_text_field(request.form.get('category'), 'category', 60)
+        category, category_error = parse_category_name(request.form.get('category'))
         if category_error:
-            flash('Category is too long.', 'error')
+            flash('Choose a valid default category.', 'error')
             return redirect(url_for('admin_dashboard'))
 
         try:
@@ -794,6 +1248,8 @@ def create_app(config_overrides=None):
     @app.route('/api/items', methods=['GET'])
     @login_required
     def api_items_list():
+        ensure_user_has_default_stores(current_user)
+        ensure_user_has_default_items(current_user)
         items = Item.query.filter_by(user_id=current_user.id).order_by(Item.sort_order.asc(), Item.name.asc(), Item.id.asc()).all()
         return jsonify([serialize(item) for item in items])
 
@@ -807,13 +1263,15 @@ def create_app(config_overrides=None):
         name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             return error
+        if find_user_item_by_name(current_user.id, name) is not None:
+            return error_response('item already exists', 409)
         quantity, error = parse_quantity(data.get('quantity'))
         if error:
             return error
         unit, error = normalize_text_field(data.get('unit'), 'unit', 30)
         if error:
             return error
-        category, error = normalize_text_field(data.get('category'), 'category', 60)
+        category, error = parse_category_name(data.get('category'))
         if error:
             return error
         store_id, error = parse_store_id(data.get('store_id'))
@@ -835,9 +1293,12 @@ def create_app(config_overrides=None):
             return error
 
         if 'name' in data:
-            item.name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
+            name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
             if error:
                 return error
+            if find_user_item_by_name(current_user.id, name, exclude_item_id=item.id) is not None:
+                return error_response('item already exists', 409)
+            item.name = name
         if 'quantity' in data:
             item.quantity, error = parse_quantity(data.get('quantity'))
             if error:
@@ -847,7 +1308,7 @@ def create_app(config_overrides=None):
             if error:
                 return error
         if 'category' in data:
-            item.category, error = normalize_text_field(data.get('category'), 'category', 60)
+            item.category, error = parse_category_name(data.get('category'))
             if error:
                 return error
         if 'checked' in data:
@@ -875,55 +1336,45 @@ def create_app(config_overrides=None):
     @app.route('/api/stores', methods=['GET'])
     @login_required
     def api_stores_list():
+        ensure_user_has_default_stores(current_user)
         stores = Store.query.filter_by(user_id=current_user.id).order_by(Store.sort_order.asc(), Store.name.asc(), Store.id.asc()).all()
         return jsonify([serialize_store(store) for store in stores])
 
     @app.route('/api/stores', methods=['POST'])
     @login_required
     def api_stores_create():
-        data, error = get_json_body()
-        if error:
-            return error
-
-        name, error = normalize_text_field(data.get('name'), 'name', 100, required=True)
-        if error:
-            return error
-        if Store.query.filter_by(name=name, user_id=current_user.id).first():
-            return error_response('Store already exists', 409)
-
-        next_sort_order = (db.session.query(db.func.max(Store.sort_order)).filter_by(user_id=current_user.id).scalar() or 0) + 10
-        store = Store(name=name, user_id=current_user.id, sort_order=next_sort_order)
-        db.session.add(store)
-        db.session.commit()
-        return jsonify(serialize_store(store)), 201
+        return stores_are_admin_managed_error()
 
     @app.route('/api/stores/<int:store_id>', methods=['PATCH'])
     @login_required
     def api_stores_update(store_id):
-        store = Store.query.filter_by(id=store_id, user_id=current_user.id).first_or_404()
-        data, error = get_json_body()
-        if error:
-            return error
-
-        if 'name' in data:
-            new_name, error = normalize_text_field(data.get('name'), 'name', 100, required=True)
-            if error:
-                return error
-            if new_name != store.name and Store.query.filter_by(name=new_name, user_id=current_user.id).first():
-                return error_response('Store name already exists', 409)
-            store.name = new_name
-
-        db.session.commit()
-        return jsonify(serialize_store(store))
+        return stores_are_admin_managed_error()
 
     @app.route('/api/stores/<int:store_id>', methods=['DELETE'])
     @login_required
     def api_stores_delete(store_id):
-        store = Store.query.filter_by(id=store_id, user_id=current_user.id).first_or_404()
-        Item.query.filter_by(store_id=store_id, user_id=current_user.id).update({'store_id': None})
-        db.session.delete(store)
-        db.session.commit()
-        return '', 204
+        return stores_are_admin_managed_error()
+
+    @app.route('/api/categories', methods=['GET'])
+    @login_required
+    def api_categories_list():
+        categories = DefaultCategoryTemplate.query.order_by(*default_category_ordering()).all()
+        return jsonify([serialize_category(category) for category in categories])
+
+    @app.route('/api/categories', methods=['POST'])
+    @login_required
+    def api_categories_create():
+        return categories_are_admin_managed_error()
+
+    @app.route('/api/categories/<int:category_id>', methods=['PATCH'])
+    @login_required
+    def api_categories_update(category_id):
+        return categories_are_admin_managed_error()
+
+    @app.route('/api/categories/<int:category_id>', methods=['DELETE'])
+    @login_required
+    def api_categories_delete(category_id):
+        return categories_are_admin_managed_error()
 
     @app.route('/api/preferences/theme', methods=['PATCH'])
     @login_required

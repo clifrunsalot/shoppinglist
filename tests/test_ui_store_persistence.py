@@ -1,0 +1,262 @@
+import pytest
+
+from app.db import db
+from app.models import DefaultCategoryTemplate, DefaultStoreTemplate, Item, Store
+
+
+def open_detail_panel(page):
+    page.get_by_test_id('open-detail-panel').click()
+    page.get_by_test_id('item-detail-panel').wait_for()
+    page.get_by_test_id('detail-tab-advanced').wait_for()
+
+
+@pytest.fixture
+def seeded_store_persistence_data(app, create_user):
+    user = create_user('browser-user@example.com')
+
+    with app.app_context():
+        produce_category = DefaultCategoryTemplate(name='Produce')
+        bakery_category = DefaultCategoryTemplate(name='Bakery')
+        db.session.add_all([produce_category, bakery_category])
+        pantry_template = DefaultStoreTemplate(name='Pantry', sort_order=0)
+        market_template = DefaultStoreTemplate(name='Market', sort_order=0)
+        db.session.add_all([pantry_template, market_template])
+        db.session.flush()
+
+        pantry = Store(name='Pantry', user_id=user['id'], sort_order=10, template_store_id=pantry_template.id)
+        market = Store(name='Market', user_id=user['id'], sort_order=20, template_store_id=market_template.id)
+        db.session.add_all([pantry, market])
+        db.session.flush()
+
+        apples = Item(name='Apples', quantity=1, user_id=user['id'], sort_order=10, store_id=pantry.id)
+        bread = Item(name='Bread', quantity=1, user_id=user['id'], sort_order=20, store_id=pantry.id)
+        extra_items = [
+            Item(name=f'Item {index}', quantity=1, user_id=user['id'], sort_order=30 + index, store_id=pantry.id)
+            for index in range(1, 19)
+        ]
+        db.session.add_all([apples, bread, *extra_items])
+        db.session.commit()
+
+        return {
+            'email': user['email'],
+            'password': user['password'],
+            'category_names': {'produce': produce_category.name, 'bakery': bakery_category.name},
+            'item_ids': {'apples': apples.id, 'bread': bread.id},
+            'store_ids': {'pantry': pantry.id, 'market': market.id},
+        }
+
+
+def test_store_selection_persists_when_switching_items(browser_page, live_server, seeded_store_persistence_data, app):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    bread_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['bread']}")
+    apples_row.wait_for()
+    bread_row.wait_for()
+
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+
+    store_select = page.get_by_test_id('detail-store-select')
+    store_select.select_option(str(seeded_store_persistence_data['store_ids']['market']))
+    page.get_by_test_id('panel-close').click()
+    bread_row.click()
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+
+    expect(store_select).to_have_value(str(seeded_store_persistence_data['store_ids']['market']))
+
+    page.reload(wait_until='domcontentloaded')
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+    expect(page.get_by_test_id('detail-store-select')).to_have_value(str(seeded_store_persistence_data['store_ids']['market']))
+
+    with app.app_context():
+        apples = db.session.get(Item, seeded_store_persistence_data['item_ids']['apples'])
+        assert apples.store_id == seeded_store_persistence_data['store_ids']['market']
+
+
+def test_category_selection_persists_when_switching_items(browser_page, live_server, seeded_store_persistence_data, app):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    bread_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['bread']}")
+    apples_row.wait_for()
+    bread_row.wait_for()
+
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+
+    category_select = page.get_by_test_id('detail-category-select')
+    category_select.select_option(seeded_store_persistence_data['category_names']['bakery'])
+    page.get_by_test_id('panel-close').click()
+    bread_row.click()
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+
+    expect(category_select).to_have_value(seeded_store_persistence_data['category_names']['bakery'])
+
+    page.reload(wait_until='domcontentloaded')
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-tab-advanced').click()
+    expect(page.get_by_test_id('detail-category-select')).to_have_value(seeded_store_persistence_data['category_names']['bakery'])
+
+    with app.app_context():
+        apples = db.session.get(Item, seeded_store_persistence_data['item_ids']['apples'])
+        assert apples.category == seeded_store_persistence_data['category_names']['bakery']
+
+
+def test_detail_sheet_stays_open_after_multiple_edits(browser_page, live_server, seeded_store_persistence_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
+
+    open_detail_panel(page)
+
+    detail_sheet = page.get_by_test_id('item-detail-panel')
+    expect(detail_sheet).to_be_visible()
+
+    name_input = page.get_by_test_id('detail-name-input')
+    name_input.fill('Apples Gala')
+    name_input.blur()
+
+    unit_input = page.get_by_test_id('detail-unit-input')
+    unit_input.fill('bag')
+    unit_input.blur()
+
+    expect(detail_sheet).to_be_visible()
+    expect(name_input).to_have_value('Apples Gala')
+    expect(unit_input).to_have_value('bag')
+
+
+def test_detail_sheet_allows_manual_quantity_updates(browser_page, live_server, seeded_store_persistence_data, app):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+
+    quantity_input = page.get_by_test_id('detail-quantity-input')
+    quantity_input.click()
+    quantity_input.press('Meta+A')
+    quantity_input.press('Backspace')
+    quantity_input.press_sequentially('7')
+    quantity_input.blur()
+
+    expect(quantity_input).to_have_value('7')
+
+    page.reload(wait_until='domcontentloaded')
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+    expect(page.get_by_test_id('detail-quantity-input')).to_have_value('7')
+
+    with app.app_context():
+        apples = db.session.get(Item, seeded_store_persistence_data['item_ids']['apples'])
+        assert apples.quantity == 7
+
+
+def test_detail_sheet_allows_manual_price_updates(browser_page, live_server, seeded_store_persistence_data, app):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+
+    price_input = page.get_by_test_id('detail-price-input')
+    price_input.click()
+    price_input.press('Meta+A')
+    price_input.press('Backspace')
+    price_input.press_sequentially('4.75')
+    price_input.blur()
+
+    expect(price_input).to_have_value('4.75')
+
+    page.reload(wait_until='domcontentloaded')
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+    expect(page.get_by_test_id('detail-price-input')).to_have_value('4.75')
+
+    with app.app_context():
+        apples = db.session.get(Item, seeded_store_persistence_data['item_ids']['apples'])
+        assert float(apples.price) == 4.75
+
+
+def test_collapsed_detail_trigger_clears_when_selection_is_dismissed(browser_page, live_server, seeded_store_persistence_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.click()
+
+    detail_trigger = page.get_by_test_id('open-detail-panel')
+    expect(detail_trigger).to_be_visible()
+
+    page.get_by_label('Filter items').click()
+    expect(detail_trigger).to_have_count(0)
+
+    apples_row.click()
+    expect(detail_trigger).to_be_visible()
+
+    page.locator('main').evaluate("node => { node.scrollTop = Math.min(node.scrollHeight, 240); node.dispatchEvent(new Event('scroll')); }")
+    expect(detail_trigger).to_have_count(0)

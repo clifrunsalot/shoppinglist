@@ -78,6 +78,19 @@ class DefaultStoreTemplate(db.Model):
     items = db.relationship('DefaultItemTemplate', backref='default_store_template', lazy=True)
 
 
+class DefaultCategoryTemplate(db.Model):
+    __tablename__ = 'default_category_templates'
+
+    __table_args__ = (
+        db.UniqueConstraint('name', name='uq_default_category_template_name'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    template_key = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(60), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 class DefaultItemTemplate(db.Model):
     __tablename__ = 'default_item_templates'
 

@@ -42,6 +42,18 @@ pip install -r requirements.txt
 python -m pytest
 ```
 
+To install the browser runtime for UI regressions, run:
+
+```bash
+python -m playwright install chromium
+```
+
+To run the Playwright regression for the item store-selection persistence bug, run:
+
+```bash
+python -m pytest tests/test_ui_store_persistence.py
+```
+
 To generate coverage output, run:
 
 ```bash
@@ -61,6 +73,7 @@ The current tests cover:
 - per-user data isolation for items and stores
 - `/api/stores` duplicate-name protection
 - clearing `store_id` references when a store is deleted
+- browser-level persistence of store selection when switching between items
 
 Authentication
 
