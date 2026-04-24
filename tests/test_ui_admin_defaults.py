@@ -12,8 +12,10 @@ def login(page, live_server, email, password):
 
 
 def open_detail_panel(page):
-    page.get_by_test_id('open-detail-panel').click()
-    page.get_by_test_id('item-detail-panel').wait_for()
+    detail_panel = page.get_by_test_id('item-detail-panel')
+    if detail_panel.count() == 0:
+        page.get_by_test_id('open-detail-panel').click()
+    detail_panel.wait_for()
     page.get_by_test_id('detail-tab-advanced').wait_for()
 
 
@@ -345,7 +347,7 @@ def test_admin_users_protected_admin_actions_are_disabled(browser_page, live_ser
     expect(desktop_panel.get_by_role('button', name='Delete User')).to_be_disabled()
 
 
-def test_bottom_panels_are_collapsed_until_expanded(browser_page, live_server, seeded_admin_store_delete_data):
+def test_desktop_row_selection_opens_detail_panel_after_add_panel_closes(browser_page, live_server, seeded_admin_store_delete_data):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
     page = browser_page
@@ -366,10 +368,6 @@ def test_bottom_panels_are_collapsed_until_expanded(browser_page, live_server, s
     apples_row.click()
 
     expect(add_item_panel).to_have_count(0)
-    expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
-    expect(page.get_by_test_id('open-detail-panel')).to_be_visible()
-
-    open_detail_panel(page)
     expect(page.get_by_test_id('item-detail-panel')).to_be_visible()
 
     page.get_by_test_id('panel-close').click()

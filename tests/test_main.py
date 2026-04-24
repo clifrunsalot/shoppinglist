@@ -685,6 +685,23 @@ def test_import_default_items_api_applies_alphabetical_sort_order(auth_client, a
     assert [item['sort_order'] for item in list_response.get_json()] == [10, 20]
 
 
+def test_items_api_lists_items_alphabetically_by_default(auth_client, auth_user, app):
+    with app.app_context():
+        db.session.add_all(
+            [
+                Item(name='Zulu Apples', quantity=1, user_id=auth_user['id'], sort_order=10),
+                Item(name='bananas', quantity=1, user_id=auth_user['id'], sort_order=1),
+                Item(name='Carrots', quantity=1, user_id=auth_user['id'], sort_order=5),
+            ]
+        )
+        db.session.commit()
+
+    response = auth_client.get('/api/items')
+
+    assert response.status_code == 200
+    assert [item['name'] for item in response.get_json()] == ['bananas', 'Carrots', 'Zulu Apples']
+
+
 def test_admin_dashboard_requires_admin(auth_client):
     response = auth_client.get('/admin')
 

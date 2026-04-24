@@ -5,8 +5,10 @@ from app.models import DefaultCategoryTemplate, DefaultItemTemplate, DefaultStor
 
 
 def open_detail_panel(page):
-    page.get_by_test_id('open-detail-panel').click()
-    page.get_by_test_id('item-detail-panel').wait_for()
+    detail_panel = page.get_by_test_id('item-detail-panel')
+    if detail_panel.count() == 0:
+        page.get_by_test_id('open-detail-panel').click()
+    detail_panel.wait_for()
     page.get_by_test_id('detail-tab-advanced').wait_for()
 
 
@@ -116,6 +118,26 @@ def seeded_category_filter_row_data(app, create_user):
                 'soap': soap.id,
             },
         }
+
+
+@pytest.fixture
+def seeded_alphabetical_item_order_data(app, create_user):
+    user = create_user('alphabetical-order-user@example.com')
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                Item(name='Zulu Apples', quantity=1, user_id=user['id'], sort_order=10),
+                Item(name='bananas', quantity=1, user_id=user['id'], sort_order=1),
+                Item(name='Carrots', quantity=1, user_id=user['id'], sort_order=5),
+            ]
+        )
+        db.session.commit()
+
+    return {
+        'email': user['email'],
+        'password': user['password'],
+    }
 
 
 def test_store_selection_persists_when_switching_items(browser_page, live_server, seeded_store_persistence_data, app):
@@ -228,6 +250,143 @@ def test_category_filter_row_uses_default_categories_with_items(browser_page, li
     expect(soap_row).to_be_hidden()
 
 
+def test_category_filter_row_stays_on_one_line_on_mobile(browser_page, live_server, seeded_category_filter_row_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_category_filter_row_data['email'])
+    page.locator('#password').fill(seeded_category_filter_row_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    rail = page.get_by_test_id('category-filter-rail')
+    expect(rail).to_be_visible()
+    expect(page.get_by_test_id('category-filter-all')).to_be_visible()
+    expect(page.get_by_test_id(f"category-filter-{seeded_category_filter_row_data['category_ids']['produce']}" )).to_be_visible()
+    expect(page.get_by_test_id(f"category-filter-{seeded_category_filter_row_data['category_ids']['bakery']}" )).to_be_visible()
+    expect(page.get_by_test_id('category-filter-pending')).to_be_visible()
+    expect(page.get_by_test_id('category-filter-done')).to_be_visible()
+
+    top_positions = page.locator('[data-testid^="category-filter-"]').evaluate_all(
+        "nodes => nodes.map(node => Math.round(node.getBoundingClientRect().top))"
+    )
+
+    assert len(set(top_positions)) == 1
+
+
+def test_normal_mode_items_list_is_alphabetical_by_default(browser_page, live_server, seeded_alphabetical_item_order_data):
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_alphabetical_item_order_data['email'])
+    page.locator('#password').fill(seeded_alphabetical_item_order_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    page.locator('[data-testid^="item-row-"]').first.wait_for()
+    visible_rows = page.locator('[data-testid^="item-row-"]')
+    visible_names = visible_rows.evaluate_all("nodes => nodes.slice(0, 3).map(node => node.querySelector('p.font-medium')?.textContent?.trim() || '')")
+
+    assert visible_names == ['bananas', 'Carrots', 'Zulu Apples']
+
+
+def test_active_filter_persists_after_refresh(browser_page, live_server, seeded_alphabetical_item_order_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_alphabetical_item_order_data['email'])
+    page.locator('#password').fill(seeded_alphabetical_item_order_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    pending_filter = page.get_by_test_id('category-filter-pending')
+    pending_filter.click()
+    assert 'bg-amber-500' in (pending_filter.get_attribute('class') or '')
+
+    page.reload(wait_until='domcontentloaded')
+
+    reloaded_pending_filter = page.get_by_test_id('category-filter-pending')
+    assert 'bg-amber-500' in (reloaded_pending_filter.get_attribute('class') or '')
+    visible_rows = page.locator('[data-testid^="item-row-"]')
+    labels = visible_rows.evaluate_all("nodes => nodes.slice(0, 3).map(node => node.querySelector('button[aria-label^=\"Mark \"]')?.getAttribute('aria-label') || '')")
+
+    assert labels
+    assert all(label == 'Mark done' for label in labels)
+
+
+def test_category_filter_persists_after_refresh(browser_page, live_server, seeded_category_filter_row_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_category_filter_row_data['email'])
+    page.locator('#password').fill(seeded_category_filter_row_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    produce_filter = page.get_by_test_id(f"category-filter-{seeded_category_filter_row_data['category_ids']['produce']}")
+    produce_filter.click()
+    assert 'theme-filter-active' in (produce_filter.get_attribute('class') or '')
+
+    page.reload(wait_until='domcontentloaded')
+
+    reloaded_produce_filter = page.get_by_test_id(f"category-filter-{seeded_category_filter_row_data['category_ids']['produce']}")
+    assert 'theme-filter-active' in (reloaded_produce_filter.get_attribute('class') or '')
+
+    visible_rows = page.locator('[data-testid^="item-row-"]')
+    visible_names = visible_rows.evaluate_all("nodes => nodes.map(node => node.querySelector('p.font-medium')?.textContent?.trim() || '')")
+
+    assert visible_names == ['Apples']
+
+
+def test_desktop_checkbox_toggle_stays_visible_in_place(browser_page, live_server, seeded_alphabetical_item_order_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.set_viewport_size({'width': 1280, 'height': 900})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_alphabetical_item_order_data['email'])
+    page.locator('#password').fill(seeded_alphabetical_item_order_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    first_row = page.locator('[data-testid^="item-row-"]').first
+    first_row.wait_for()
+    expect(first_row.locator('p.font-medium')).to_have_text('bananas')
+
+    checkbox = first_row.get_by_role('button', name='Mark done')
+    checkbox.click()
+
+    expect(page.locator('[data-testid^="item-row-"]').first.locator('p.font-medium')).to_have_text('bananas')
+    expect(page.locator('[data-testid^="item-row-"]').first.get_by_role('button', name='Mark pending')).to_be_visible()
+    expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
+
+
+def test_desktop_checkbox_left_edge_click_toggles_item(browser_page, live_server, seeded_alphabetical_item_order_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.set_viewport_size({'width': 1280, 'height': 900})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_alphabetical_item_order_data['email'])
+    page.locator('#password').fill(seeded_alphabetical_item_order_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    first_row = page.locator('[data-testid^="item-row-"]').first
+    first_row.wait_for()
+    checkbox = first_row.get_by_role('button', name='Mark done')
+    box = checkbox.bounding_box()
+
+    assert box is not None
+
+    page.mouse.click(box['x'] + 2, box['y'] + (box['height'] / 2))
+
+    expect(first_row.get_by_role('button', name='Mark pending')).to_be_visible()
+    expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
+
+
 def test_settings_import_default_items_overwrites_same_name_item(browser_page, live_server, seeded_settings_import_default_items_data):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
@@ -271,9 +430,6 @@ def test_detail_sheet_stays_open_after_multiple_edits(browser_page, live_server,
     apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
     apples_row.wait_for()
     apples_row.click()
-    expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
-
-    open_detail_panel(page)
 
     detail_sheet = page.get_by_test_id('item-detail-panel')
     expect(detail_sheet).to_be_visible()
@@ -363,7 +519,7 @@ def test_detail_sheet_allows_manual_price_updates(browser_page, live_server, see
         assert float(apples.price) == 4.75
 
 
-def test_collapsed_detail_trigger_clears_when_selection_is_dismissed(browser_page, live_server, seeded_store_persistence_data):
+def test_desktop_row_selection_opens_detail_panel(browser_page, live_server, seeded_store_persistence_data):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
     page = browser_page
@@ -377,14 +533,29 @@ def test_collapsed_detail_trigger_clears_when_selection_is_dismissed(browser_pag
     apples_row.wait_for()
     apples_row.click()
 
+    detail_panel = page.get_by_test_id('item-detail-panel')
+    expect(detail_panel).to_be_visible()
+    expect(page.get_by_test_id('detail-name-input')).to_have_value('Apples')
+
+    page.get_by_test_id('panel-close').click()
+    expect(detail_panel).to_have_count(0)
+
+
+def test_mobile_row_selection_shows_collapsed_detail_trigger(browser_page, live_server, seeded_store_persistence_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.set_viewport_size({'width': 390, 'height': 844})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}")
+    apples_row.wait_for()
+    apples_row.dispatch_event('touchend')
+
     detail_trigger = page.get_by_test_id('open-detail-panel')
     expect(detail_trigger).to_be_visible()
-
-    page.get_by_label('Filter items').click()
-    expect(detail_trigger).to_have_count(0)
-
-    apples_row.click()
-    expect(detail_trigger).to_be_visible()
-
-    page.locator('main').evaluate("node => { node.scrollTop = Math.min(node.scrollHeight, 240); node.dispatchEvent(new Event('scroll')); }")
-    expect(detail_trigger).to_have_count(0)
+    expect(detail_trigger).to_contain_text('Apples')

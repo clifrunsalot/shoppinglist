@@ -1435,7 +1435,7 @@ def create_app(config_overrides=None):
     def api_items_list():
         ensure_user_has_default_stores(current_user)
         ensure_user_has_default_items(current_user)
-        items = Item.query.filter_by(user_id=current_user.id).order_by(Item.sort_order.asc(), Item.name.asc(), Item.id.asc()).all()
+        items = Item.query.filter_by(user_id=current_user.id).order_by(db.func.lower(Item.name).asc(), Item.id.asc()).all()
         return jsonify([serialize(item) for item in items])
 
     @app.route('/api/items', methods=['POST'])

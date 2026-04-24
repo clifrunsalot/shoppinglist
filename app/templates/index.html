@@ -101,6 +101,15 @@
       border-color: var(--accent);
     }
 
+    .category-chip-rail {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .category-chip-rail::-webkit-scrollbar {
+      display: none;
+    }
+
     .theme-badge {
       background: var(--accent-soft);
       color: var(--accent-strong);
@@ -152,6 +161,21 @@
 
     .theme-selected {
       box-shadow: 0 0 0 2px var(--accent), 0 18px 26px -24px var(--accent-shadow);
+    }
+
+    .press-feedback,
+    .press-feedback-row {
+      transform-origin: center;
+    }
+
+    @media (hover: none), (pointer: coarse) {
+      .press-feedback:active {
+        transform: scale(0.96);
+      }
+
+      .press-feedback-row:active {
+        transform: scale(0.985);
+      }
     }
 
     @keyframes slide-in-from-bottom {
@@ -216,10 +240,10 @@
   </header>
 
   <!-- MIDDLE PANEL: scrollable item list -->
-  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-3" @scroll.passive="dismissCollapsedSelection()">
+  <main class="flex-1 min-h-0 overflow-y-auto px-3 py-3 pb-28 sm:pb-32" @scroll.passive="dismissCollapsedSelection()">
     <!-- Filter / sort bar -->
     <div class="sticky top-0 z-20 -mx-3 px-3 pt-2 pb-2 bg-white/80 backdrop-blur-sm border-b border-white/60">
-      <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex items-center gap-2">
       <button @click="toggleSettings()" class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         :aria-label="showSettings ? 'Close settings' : 'Open settings'">
           <svg class="w-5 h-5 overflow-visible" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
@@ -227,17 +251,21 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12a3 3 0 106 0 3 3 0 00-6 0z" />
         </svg>
       </button>
-      <button data-testid="category-filter-all" @click="setActiveFilter('all')" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-        :class="activeFilter === 'all' ? 'theme-filter-active' : ''">All</button>
-      <template x-for="category in categoryFilters" :key="category.id">
-        <button type="button" :data-testid="`category-filter-${category.id}`" @click="setActiveFilter(category.name)" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-          :class="activeFilter === category.name ? 'theme-filter-active' : ''" x-text="category.name"></button>
-      </template>
-      <button data-testid="category-filter-pending" @click="setActiveFilter('pending')"
-        class="text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-        :class="activeFilter === 'pending' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-400'">Pending</button>
-      <button data-testid="category-filter-done" @click="setActiveFilter('done')" class="text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-        :class="activeFilter === 'done' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'">Done</button>
+      <div data-testid="category-filter-rail" class="category-chip-rail min-w-0 flex-1 overflow-x-auto">
+        <div class="flex min-w-max flex-nowrap items-center gap-2 pr-2 whitespace-nowrap">
+          <button data-testid="category-filter-all" @click="setActiveFilter('all')" class="theme-filter shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+            :class="activeFilter === 'all' ? 'theme-filter-active' : ''">All</button>
+          <template x-for="category in categoryFilters" :key="category.id">
+            <button type="button" :data-testid="`category-filter-${category.id}`" @click="setActiveFilter(category.name)" class="theme-filter shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+              :class="activeFilter === category.name ? 'theme-filter-active' : ''" x-text="category.name"></button>
+          </template>
+          <button data-testid="category-filter-pending" @click="setActiveFilter('pending')"
+            class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+            :class="activeFilter === 'pending' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-400'">Pending</button>
+          <button data-testid="category-filter-done" @click="setActiveFilter('done')" class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+            :class="activeFilter === 'done' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'">Done</button>
+        </div>
+      </div>
       </div>
     </div>
     <div class="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -267,15 +295,15 @@
       <template x-for="item in filteredItems" :key="item.id">
         <li :data-testid="`item-row-${item.id}`" @click="selectItem(item, 'click')" @touchend.stop.prevent="selectItem(item, 'touch')"
           @keydown.enter.prevent="selectItem(item, 'keyboard')" @keydown.space.prevent="selectItem(item, 'keyboard')" tabindex="0" role="button"
-          class="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all active:scale-95"
+          class="press-feedback-row bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all"
           :class="selectedItem && selectedItem.id === item.id
                       ? 'theme-selected'
                       : 'hover:shadow-md'">
           <!-- Checkbox -->
-          <button @click.stop="checkboxClick(item)" @touchend.stop
-            class="text-2xl leading-none flex-shrink-0 transition-transform active:scale-90"
+          <button type="button" @click.stop="checkboxClick(item)" @touchend.stop
+            class="press-feedback inline-flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none flex-shrink-0 transition-transform"
             :aria-label="item.checked ? 'Mark pending' : 'Mark done'">
-            <span x-text="item.checked ? '✅' : '⬜'"></span>
+            <span class="pointer-events-none" x-text="item.checked ? '✅' : '⬜'"></span>
           </button>
           <!-- Info -->
           <div class="flex-1 min-w-0">
@@ -291,7 +319,7 @@
               x-text="item.category"></span>
           </template>
           <!-- Delete -->
-          <button @click.stop="deleteItem(item)" @touchend.stop
+          <button type="button" @click.stop="deleteItem(item)" @touchend.stop
             class="text-gray-300 hover:text-red-400 text-xl leading-none flex-shrink-0 transition-colors"
             aria-label="Delete item">✕</button>
         </li>
@@ -391,8 +419,8 @@
   </div>
 
   <template x-if="panelOpen">
-    <div class="fixed inset-0 z-50 bg-black/35 backdrop-blur-sm flex items-end sm:items-stretch sm:justify-end" @click="closePanel()">
-      <div class="bg-white w-full max-h-[82vh] rounded-t-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in sm:max-h-none sm:h-full sm:max-w-[28rem] sm:rounded-none sm:rounded-l-[2rem]" @click.stop>
+    <div class="fixed inset-0 z-50 flex items-end bg-black/35 backdrop-blur-sm sm:items-stretch sm:justify-end sm:bg-transparent sm:backdrop-blur-0 sm:pointer-events-none" @click="closePanel()">
+      <div class="pointer-events-auto bg-white w-full max-h-[82vh] rounded-t-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in sm:max-h-none sm:h-full sm:max-w-[28rem] sm:rounded-none sm:rounded-l-[2rem]" @click.stop>
         <div class="px-4 pt-3 sm:hidden">
           <div class="mx-auto h-1.5 w-12 rounded-full bg-gray-200"></div>
         </div>
@@ -546,6 +574,7 @@
           { id: 'sunset', label: 'Sunset', preview: 'linear-gradient(135deg, #fb923c 0%, #9a3412 100%)' },
           { id: 'berry', label: 'Berry', preview: 'linear-gradient(135deg, #f472b6 0%, #831843 100%)' },
         ],
+        activeFilterStorageKey: 'shoppinglist.activeFilter',
         activeFilter: 'all',
         searchQuery: '',
         lastTouchSelectAt: 0,
@@ -564,6 +593,8 @@
         pendingItemTimers: {},
         pendingItemRollback: {},
         pendingItemSavePromises: {},
+        hasLoadedItems: false,
+        hasLoadedCategories: false,
         storeSaveItemId: null,
         categorySaveItemId: null,
         storeRefreshTimer: null,
@@ -579,8 +610,32 @@
             return;
           }
 
+          if (!this.hasLoadedItems || !this.hasLoadedCategories) {
+            return;
+          }
+
           if (!this.categoryFilters.some(category => category.name === this.activeFilter)) {
             this.activeFilter = 'all';
+            this.persistActiveFilter();
+          }
+        },
+
+        restoreActiveFilter() {
+          try {
+            const savedFilter = window.localStorage.getItem(this.activeFilterStorageKey);
+            if (savedFilter) {
+              this.activeFilter = savedFilter;
+            }
+          } catch (err) {
+            // Ignore storage access failures and fall back to the default view.
+          }
+        },
+
+        persistActiveFilter() {
+          try {
+            window.localStorage.setItem(this.activeFilterStorageKey, this.activeFilter);
+          } catch (err) {
+            // Ignore storage access failures and keep the current in-memory filter.
           }
         },
 
@@ -619,15 +674,8 @@
               return haystack.includes(query);
             });
           }
-          list = [...list].sort((left, right) => {
-            const sortDelta = (left.sort_order || 0) - (right.sort_order || 0);
-            if (sortDelta !== 0) {
-              return sortDelta;
-            }
-            return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
-          });
-          // checked items always sink to bottom within filter
-          return [...list.filter(i => !i.checked), ...list.filter(i => i.checked)];
+          list = [...list].sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
+          return list;
         },
 
         syncDetailPanelSelection() {
@@ -662,6 +710,7 @@
           if (this.activeFilter === filter) return;
           this.flushSelectedItemChanges();
           this.activeFilter = filter;
+          this.persistActiveFilter();
           this.selectedItem = null;
           if (this.panelMode === 'detail') {
             this.panelOpen = false;
@@ -684,6 +733,7 @@
         },
 
         init() {
+          this.restoreActiveFilter();
           this.syncThemeColor();
           document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.showSettings) this.showSettings = false;
@@ -1358,6 +1408,7 @@
 
         async fetchItems() {
           this.items = await this.requestJson('/api/items', {}, 'Unable to load items.');
+          this.hasLoadedItems = true;
           this.syncActiveFilter();
         },
 
@@ -1367,6 +1418,7 @@
 
         async fetchCategories() {
           this.categories = await this.requestJson('/api/categories', {}, 'Unable to load categories.');
+          this.hasLoadedCategories = true;
           this.syncActiveFilter();
         },
 
@@ -1424,6 +1476,14 @@
           return parsed.toFixed(2);
         },
 
+        shouldOpenDetailOnSelect(source) {
+          if (source === 'touch') {
+            return false;
+          }
+
+          return window.matchMedia('(min-width: 640px)').matches;
+        },
+
         selectItem(item, source = 'click') {
           const itemId = item.id;
           this.itemSelectionPromise = this.itemSelectionPromise
@@ -1445,11 +1505,20 @@
               }
 
               if (this.selectedItem && this.selectedItem.id === itemId) {
+                if (this.shouldOpenDetailOnSelect(source)) {
+                  this.openDetailPanel(nextItem);
+                  return;
+                }
+
                 this.selectedItem = null;
                 return;
               }
 
               this.setSelectedItemFromState(nextItem);
+
+              if (this.shouldOpenDetailOnSelect(source)) {
+                this.openDetailPanel(nextItem);
+              }
             });
           return this.itemSelectionPromise;
         },
@@ -1458,6 +1527,7 @@
           if (!this.selectedItem || this.selectedItem.id !== item.id) {
             this.setSelectedItemFromState(item);
           }
+
           await this.toggleChecked(item);
         },
 
