@@ -606,6 +606,85 @@ def test_password_change_rejects_short_password(auth_client, auth_user):
     assert response.get_json() == {'error': 'new password must be at least 8 characters long'}
 
 
+def test_import_default_items_api_overwrites_existing_same_name_items(auth_client, auth_user, app):
+    with app.app_context():
+        default_store = main_module.DefaultStoreTemplate(name='Pantry', sort_order=0)
+        db.session.add(default_store)
+        db.session.flush()
+        template_item = main_module.DefaultItemTemplate(
+            name='Apples',
+            quantity=3,
+            unit='bag',
+            category='Produce',
+            sort_order=15,
+            store_template_id=default_store.id,
+        )
+        existing_item = Item(
+            name=' apples ',
+            quantity=9,
+            unit='crate',
+            category='Snacks',
+            sort_order=90,
+            price=Decimal('4.50'),
+            checked=True,
+            user_id=auth_user['id'],
+        )
+        db.session.add_all([template_item, existing_item])
+        db.session.commit()
+        existing_item_id = existing_item.id
+        template_item_id = template_item.id
+        default_store_id = default_store.id
+
+    response = auth_client.post('/api/account/import-default-items', json={})
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        'message': 'default items imported',
+        'created_count': 0,
+        'overwritten_count': 1,
+    }
+
+    with app.app_context():
+        items = Item.query.filter_by(user_id=auth_user['id']).order_by(Item.id.asc()).all()
+        assert len(items) == 1
+        assert items[0].id == existing_item_id
+        assert items[0].name == 'Apples'
+        assert items[0].quantity == 3
+        assert items[0].unit == 'bag'
+        assert items[0].category == 'Produce'
+        assert items[0].sort_order == 10
+        assert items[0].price == Decimal('0.00')
+        assert items[0].checked is False
+        assert items[0].template_item_id == template_item_id
+        copied_store = Store.query.filter_by(user_id=auth_user['id'], template_store_id=default_store_id).first()
+        assert copied_store is not None
+        assert items[0].store_id == copied_store.id
+        audit_entry = AuditLog.query.filter_by(action='user.default_items_imported', target_id=auth_user['id']).first()
+        assert audit_entry is not None
+        assert str(existing_item_id) in (audit_entry.details or '')
+
+
+def test_import_default_items_api_applies_alphabetical_sort_order(auth_client, auth_user, app):
+    with app.app_context():
+        db.session.add_all(
+            [
+                main_module.DefaultItemTemplate(name='Zulu Apples', quantity=1, sort_order=10),
+                main_module.DefaultItemTemplate(name='bananas', quantity=1, sort_order=999),
+            ]
+        )
+        db.session.commit()
+
+    import_response = auth_client.post('/api/account/import-default-items', json={})
+
+    assert import_response.status_code == 200
+
+    list_response = auth_client.get('/api/items')
+
+    assert list_response.status_code == 200
+    assert [item['name'] for item in list_response.get_json()] == ['bananas', 'Zulu Apples']
+    assert [item['sort_order'] for item in list_response.get_json()] == [10, 20]
+
+
 def test_admin_dashboard_requires_admin(auth_client):
     response = auth_client.get('/admin')
 
@@ -626,7 +705,7 @@ def test_admin_default_stores_page_omits_sort_order_field(admin_client, app):
     response = admin_client.get('/admin')
 
     assert response.status_code == 200
-    assert b'These stores are copied into each newly approved account and sorted alphabetically.' in response.data
+    assert b'Compact rows keep the store list scannable.' in response.data
     default_stores_section = response.data.split(b'Default Stores', 1)[1].split(b'Default Grocery List', 1)[0]
     assert b'name="sort_order"' not in default_stores_section
     assert response.data.index(b'Alpha Foods') < response.data.index(b'Zulu Market')
@@ -749,6 +828,32 @@ def test_admin_create_default_item_merges_into_existing_user_accounts(admin_clie
         assert merged_item.store_id == copied_store_id
 
 
+def test_admin_create_default_item_defaults_blank_quantity_to_one(admin_client, app):
+    with app.app_context():
+        db.session.add(main_module.DefaultCategoryTemplate(name='Produce'))
+        db.session.commit()
+
+    response = admin_client.post(
+        '/admin/default-items',
+        data={
+            'name': 'Bananas',
+            'quantity': '',
+            'unit': 'lb',
+            'category': 'Produce',
+            'sort_order': '25',
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'Default item added.' in response.data
+
+    with app.app_context():
+        template_item = main_module.DefaultItemTemplate.query.filter_by(name='Bananas').first()
+        assert template_item is not None
+        assert template_item.quantity == 1
+
+
 def test_admin_create_default_item_rejects_duplicate_name(admin_client, app):
     with app.app_context():
         db.session.add(main_module.DefaultCategoryTemplate(name='Produce'))
@@ -772,6 +877,96 @@ def test_admin_create_default_item_rejects_duplicate_name(admin_client, app):
 
     with app.app_context():
         assert main_module.DefaultItemTemplate.query.count() == 1
+
+
+def test_admin_bulk_delete_default_items(admin_client, app):
+    with app.app_context():
+        first_item = main_module.DefaultItemTemplate(name='Bananas', quantity=1, sort_order=10)
+        second_item = main_module.DefaultItemTemplate(name='Yogurt', quantity=2, sort_order=20)
+        db.session.add_all([first_item, second_item])
+        db.session.commit()
+        first_item_id = first_item.id
+        second_item_id = second_item.id
+
+    response = admin_client.post(
+        '/admin/default-items/bulk-delete',
+        data={'item_ids': [str(first_item_id), str(second_item_id)]},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'Deleted 2 default items.' in response.data
+
+    with app.app_context():
+        assert db.session.get(main_module.DefaultItemTemplate, first_item_id) is None
+        assert db.session.get(main_module.DefaultItemTemplate, second_item_id) is None
+        audit_entry = AuditLog.query.filter_by(action='default_item.bulk_deleted').first()
+        assert audit_entry is not None
+        assert str(first_item_id) in (audit_entry.details or '')
+        assert str(second_item_id) in (audit_entry.details or '')
+
+
+def test_admin_bulk_delete_default_items_clears_existing_user_links(admin_client, create_user, app):
+    regular_user = create_user('bulk-delete-links@example.com')
+
+    with app.app_context():
+        first_item = main_module.DefaultItemTemplate(name='Bananas', quantity=1, sort_order=10)
+        second_item = main_module.DefaultItemTemplate(name='Yogurt', quantity=2, sort_order=20)
+        db.session.add_all([first_item, second_item])
+        db.session.flush()
+        linked_item = Item(name='Bananas', quantity=1, user_id=regular_user['id'], template_item_id=first_item.id)
+        db.session.add(linked_item)
+        db.session.commit()
+        first_item_id = first_item.id
+        second_item_id = second_item.id
+        linked_item_id = linked_item.id
+
+    response = admin_client.post(
+        '/admin/default-items/bulk-delete',
+        data={'item_ids': [str(first_item_id), str(second_item_id)]},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b'Deleted 2 default items.' in response.data
+
+    with app.app_context():
+        linked_item = db.session.get(Item, linked_item_id)
+        assert linked_item is not None
+        assert linked_item.template_item_id is None
+
+
+def test_admin_bulk_delete_default_items_requires_selection(admin_client, app):
+    with app.app_context():
+        item = main_module.DefaultItemTemplate(name='Bananas', quantity=1, sort_order=10)
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    response = admin_client.post('/admin/default-items/bulk-delete', data={})
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/admin#default-items')
+
+    with app.app_context():
+        assert db.session.get(main_module.DefaultItemTemplate, item_id) is not None
+
+
+def test_admin_default_items_page_lists_items_alphabetically(admin_client, app):
+    with app.app_context():
+        db.session.add_all(
+            [
+                main_module.DefaultItemTemplate(name='Zulu Apples', quantity=1, sort_order=0),
+                main_module.DefaultItemTemplate(name='bananas', quantity=1, sort_order=999),
+            ]
+        )
+        db.session.commit()
+
+    response = admin_client.get('/admin')
+
+    assert response.status_code == 200
+    default_items_section = response.data.split(b'Default Grocery List', 1)[1].split(b'Default Theme', 1)[0]
+    assert default_items_section.index(b'bananas') < default_items_section.index(b'Zulu Apples')
 
 
 def test_items_api_backfill_links_existing_same_name_item_instead_of_creating_duplicate(auth_client, auth_user, app):
@@ -1076,6 +1271,83 @@ def test_admin_cannot_deactivate_own_account(admin_client, admin_user, app):
         user = db.session.get(User, admin_user['id'])
         assert user.is_active is True
         assert AuditLog.query.filter_by(action='user.deactivated', target_id=user.id).count() == 0
+
+
+def test_admin_cannot_deactivate_protected_admin(app, admin_user, create_user):
+    acting_admin = create_user('other-admin@example.com', admin=True)
+    client = app.test_client()
+    login_response = client.post('/login', data={'email': acting_admin['email'], 'password': acting_admin['password']})
+    assert login_response.status_code == 302
+
+    response = client.post(f"/admin/users/{admin_user['id']}/deactivate", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b'The protected admin account must remain active.' in response.data
+
+    with app.app_context():
+        user = db.session.get(User, admin_user['id'])
+        assert user is not None
+        assert user.is_active is True
+
+
+def test_admin_cannot_remove_protected_admin_access(app, admin_user, create_user):
+    acting_admin = create_user('other-admin@example.com', admin=True)
+    client = app.test_client()
+    login_response = client.post('/login', data={'email': acting_admin['email'], 'password': acting_admin['password']})
+    assert login_response.status_code == 302
+
+    response = client.post(f"/admin/users/{admin_user['id']}/admin", data={'is_admin': 'false'}, follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b'The protected admin account must retain admin access.' in response.data
+
+    with app.app_context():
+        user = db.session.get(User, admin_user['id'])
+        assert user is not None
+        assert user.is_admin is True
+
+
+def test_admin_can_delete_non_protected_user_and_related_data(admin_client, create_user, app):
+    user = create_user('delete-me@example.com')
+
+    with app.app_context():
+        store = Store(name='Pantry', user_id=user['id'], sort_order=10)
+        db.session.add(store)
+        db.session.flush()
+        item = Item(name='Apples', user_id=user['id'], store_id=store.id, quantity=1)
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+        store_id = store.id
+
+    response = admin_client.post(f"/admin/users/{user['id']}/delete", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b'User deleted.' in response.data
+
+    with app.app_context():
+        assert db.session.get(User, user['id']) is None
+        assert db.session.get(Item, item_id) is None
+        assert db.session.get(Store, store_id) is None
+        assert AuditLog.query.filter_by(action='user.deleted').count() == 1
+
+
+def test_admin_cannot_delete_protected_admin(app, admin_user, create_user):
+    acting_admin = create_user('other-admin@example.com', admin=True)
+    client = app.test_client()
+    login_response = client.post('/login', data={'email': acting_admin['email'], 'password': acting_admin['password']})
+    assert login_response.status_code == 302
+
+    response = client.post(f"/admin/users/{admin_user['id']}/delete", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert b'The protected admin account cannot be deleted.' in response.data
+
+    with app.app_context():
+        user = db.session.get(User, admin_user['id'])
+        assert user is not None
+        assert user.is_admin is True
+        assert user.is_active is True
 
 
 def test_admin_can_change_default_theme(admin_client, app):

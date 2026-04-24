@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Default Stores Compact Preview</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#e2e8f0_100%)] text-slate-900">
+  <main class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+    <header class="mb-6 rounded-[2rem] bg-slate-950 px-6 py-6 text-white shadow-[0_30px_80px_-45px_rgba(15,23,42,0.65)]">
+      <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-300">Preview Only</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight">Compact Default Stores</h1>
+      <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">This mockup keeps the current admin visual language but compresses the Default Stores section into a searchable list plus a shared editor. Mobile uses a bottom sheet and desktop uses a side editor.</p>
+    </header>
+
+    <section class="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+      <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-slate-950">Default Stores</h2>
+            <p class="mt-1 text-sm text-slate-500">Compact rows for scanning. Edit only the selected store instead of keeping every row expanded.</p>
+          </div>
+          <div class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">8 stores</div>
+        </div>
+
+        <div class="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <input type="search" value="" placeholder="Search stores" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none" />
+            <div class="flex gap-3 sm:w-auto">
+              <input type="text" value="" placeholder="Add store" class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none sm:w-48" />
+              <button class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white">Add</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 space-y-3">
+          <article class="rounded-3xl border border-slate-900 bg-white p-4 shadow-sm">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-base font-semibold text-slate-900">Pantry</div>
+                <div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">12 linked default items</span>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">42 user copies</span>
+                </div>
+              </div>
+              <div class="flex shrink-0 gap-2">
+                <button class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">Edit</button>
+                <button class="rounded-full border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">Delete</button>
+              </div>
+            </div>
+          </article>
+
+          <article class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-base font-semibold text-slate-900">Trader Joe's</div>
+                <div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">6 linked default items</span>
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">18 user copies</span>
+                </div>
+              </div>
+              <button class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">Edit</button>
+            </div>
+          </article>
+
+          <article class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-base font-semibold text-slate-900">Costco</div>
+                <div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">9 linked default items</span>
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">27 user copies</span>
+                </div>
+              </div>
+              <button class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">Edit</button>
+            </div>
+          </article>
+
+          <article class="rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="truncate text-base font-semibold text-slate-900">Target</div>
+                <div class="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">3 linked default items</span>
+                  <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">15 user copies</span>
+                </div>
+              </div>
+              <button class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">Edit</button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="hidden rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] lg:block">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Desktop Editor</p>
+          <h2 class="mt-2 text-xl font-bold text-slate-950">Pantry</h2>
+          <p class="mt-1 text-sm text-slate-500">One shared editor keeps the list short and prevents a long stack of inline forms.</p>
+        </div>
+
+        <form class="mt-5 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+          <label class="grid gap-2">
+            <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Store Name</span>
+            <input type="text" value="Pantry" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none" />
+          </label>
+
+          <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            This store is linked to 12 default items and copied into 42 user accounts.
+          </div>
+
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <button type="button" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white">Save Store</button>
+            <button type="button" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700">Delete Store</button>
+          </div>
+        </form>
+      </aside>
+    </section>
+
+    <section class="mt-6 rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] lg:hidden">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mobile Sheet</p>
+        <h2 class="mt-2 text-xl font-bold text-slate-950">Selected Store Editor</h2>
+        <p class="mt-1 text-sm text-slate-500">On mobile, tapping a row would open a compact bottom sheet instead of expanding every store inline.</p>
+      </div>
+
+      <div class="mt-5 rounded-[2rem] border border-slate-200 bg-slate-50 p-4">
+        <div class="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+        <label class="grid gap-2">
+          <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Store Name</span>
+          <input type="text" value="Pantry" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none" />
+        </label>
+        <div class="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+          12 linked default items • 42 user copies
+        </div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <button type="button" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white">Save</button>
+          <button type="button" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700">Delete</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-6 grid gap-4 md:grid-cols-3">
+      <article class="rounded-[2rem] border border-white/70 bg-white/90 p-5 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)]">
+        <h3 class="text-base font-bold text-slate-950">What changed</h3>
+        <p class="mt-2 text-sm leading-6 text-slate-500">Rows are now short summary cards rather than full edit forms. Only the selected store shows its editor.</p>
+      </article>
+      <article class="rounded-[2rem] border border-white/70 bg-white/90 p-5 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)]">
+        <h3 class="text-base font-bold text-slate-950">Why it is cleaner</h3>
+        <p class="mt-2 text-sm leading-6 text-slate-500">Admins can scan more stores at once, while actions stay available without crowding every row.</p>
+      </article>
+      <article class="rounded-[2rem] border border-white/70 bg-white/90 p-5 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)]">
+        <h3 class="text-base font-bold text-slate-950">Implementation direction</h3>
+        <p class="mt-2 text-sm leading-6 text-slate-500">This can be implemented incrementally using the same shared-editor approach already introduced for default items.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Admin Modern Preview</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe6;
+      --panel: rgba(255, 250, 242, 0.9);
+      --panel-strong: #fffaf2;
+      --ink: #201a16;
+      --muted: #6e6258;
+      --line: rgba(58, 40, 28, 0.12);
+      --accent: #c7682f;
+      --accent-soft: rgba(199, 104, 47, 0.12);
+      --teal: #236d6c;
+      --shadow: 0 24px 60px -28px rgba(40, 24, 12, 0.35);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, serif;
+      --font-body: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-body);
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(199, 104, 47, 0.18), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(35, 109, 108, 0.18), transparent 28%),
+        linear-gradient(180deg, #fbf7f2 0%, var(--bg) 100%);
+    }
+
+    .shell {
+      width: min(1280px, calc(100% - 32px));
+      margin: 24px auto;
+      display: grid;
+      gap: 20px;
+    }
+
+    .hero,
+    .layout,
+    .mobile-preview {
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      background: var(--panel);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .hero {
+      padding: 28px;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: end;
+    }
+
+    .hero h1,
+    .preview-title,
+    .drawer h2,
+    .sheet h2 {
+      margin: 0;
+      font-family: var(--font-display);
+      letter-spacing: -0.03em;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      line-height: 0.95;
+    }
+
+    .hero p,
+    .meta,
+    .helper,
+    .field label,
+    .summary,
+    .chip,
+    .badge,
+    .stat-label {
+      color: var(--muted);
+    }
+
+    .hero p {
+      max-width: 54rem;
+      margin: 10px 0 0;
+      font-size: 1rem;
+      line-height: 1.55;
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .stat {
+      min-width: 120px;
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--line);
+    }
+
+    .stat-value {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .stat-label {
+      margin-top: 4px;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr);
+      overflow: hidden;
+    }
+
+    .list-panel,
+    .drawer {
+      padding: 24px;
+    }
+
+    .drawer {
+      border-left: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.65) 0%, rgba(252, 246, 240, 0.95) 100%);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .toolbar-left,
+    .toolbar-right,
+    .row-main,
+    .row-actions,
+    .summary-row,
+    .bulk-bar,
+    .drawer-actions,
+    .sheet-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .input,
+    .select,
+    .field input,
+    .field select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      color: var(--ink);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+    }
+
+    .input {
+      min-width: 240px;
+    }
+
+    .select {
+      min-width: 140px;
+    }
+
+    .button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 16px;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      cursor: pointer;
+    }
+
+    .button-primary {
+      background: var(--ink);
+      color: white;
+    }
+
+    .button-secondary {
+      background: white;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .button-accent {
+      background: var(--accent);
+      color: white;
+    }
+
+    .button-danger {
+      background: #fff1ef;
+      color: #a83f36;
+      border: 1px solid rgba(168, 63, 54, 0.18);
+    }
+
+    .button-ghost-danger {
+      background: rgba(168, 63, 54, 0.08);
+      color: #a83f36;
+      border: 1px solid rgba(168, 63, 54, 0.14);
+    }
+
+    .summary-row {
+      padding: 14px 0 18px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      justify-content: space-between;
+    }
+
+    .badge {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .badge-danger {
+      background: rgba(168, 63, 54, 0.1);
+      color: #a83f36;
+    }
+
+    .bulk-bar {
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding: 14px 16px;
+      border-radius: 20px;
+      border: 1px solid rgba(168, 63, 54, 0.12);
+      background: linear-gradient(180deg, rgba(255, 244, 242, 0.98), rgba(255, 251, 248, 0.98));
+    }
+
+    .bulk-copy {
+      display: grid;
+      gap: 4px;
+    }
+
+    .bulk-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #922f26;
+    }
+
+    .bulk-caption {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+      max-height: 720px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .row {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255, 255, 255, 0.74);
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .row-selected {
+      border-color: rgba(168, 63, 54, 0.22);
+      background: linear-gradient(180deg, rgba(255, 243, 241, 0.96), rgba(255, 250, 248, 0.96));
+    }
+
+    .row.active {
+      border-color: rgba(199, 104, 47, 0.35);
+      background: linear-gradient(180deg, rgba(255, 247, 241, 0.95), rgba(255, 253, 250, 0.95));
+      transform: translateY(-1px);
+    }
+
+    .row-title {
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    .meta {
+      margin-top: 6px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      font-size: 0.84rem;
+    }
+
+    .chip {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(35, 109, 108, 0.09);
+      color: var(--teal);
+      font-weight: 600;
+    }
+
+    .row-selector {
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      border: 1px solid rgba(168, 63, 54, 0.25);
+      background: white;
+      display: grid;
+      place-items: center;
+      color: #a83f36;
+      font-size: 0.78rem;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+
+    .selected-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(168, 63, 54, 0.08);
+      color: #a83f36;
+      font-size: 0.76rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    .drawer-section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 12px;
+    }
+
+    .selection-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .selection-chip {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid var(--line);
+      font-size: 0.92rem;
+    }
+
+    .danger-note {
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: rgba(168, 63, 54, 0.08);
+      border: 1px solid rgba(168, 63, 54, 0.14);
+      color: #7d281f;
+      line-height: 1.5;
+    }
+
+    .helper {
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .drawer-form,
+    .sheet-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+    }
+
+    .grid-2 {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .drawer-actions,
+    .sheet-actions {
+      position: sticky;
+      bottom: 0;
+      padding-top: 18px;
+      background: linear-gradient(180deg, rgba(252, 246, 240, 0) 0%, rgba(252, 246, 240, 0.98) 28%);
+    }
+
+    .mobile-preview {
+      padding: 24px;
+    }
+
+    .preview-title {
+      font-size: 1.9rem;
+      margin-bottom: 8px;
+    }
+
+    .mobile-layout {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .phone {
+      border-radius: 34px;
+      background: #111;
+      padding: 12px;
+      box-shadow: 0 26px 60px -26px rgba(17, 17, 17, 0.55);
+    }
+
+    .screen {
+      border-radius: 26px;
+      overflow: hidden;
+      background: linear-gradient(180deg, #fdfaf6 0%, #f4ede5 100%);
+      min-height: 700px;
+      position: relative;
+    }
+
+    .mobile-header,
+    .mobile-tools,
+    .mobile-list,
+    .sheet {
+      padding-left: 18px;
+      padding-right: 18px;
+    }
+
+    .mobile-header {
+      padding-top: 20px;
+      padding-bottom: 14px;
+    }
+
+    .eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+
+    .mobile-header h2 {
+      margin: 10px 0 0;
+      font-size: 1.7rem;
+      font-family: var(--font-display);
+      line-height: 1;
+    }
+
+    .mobile-tools {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 14px;
+    }
+
+    .mobile-bulk-bar {
+      margin: 0 18px 12px;
+      padding: 12px 14px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255, 244, 242, 0.98), rgba(255, 251, 248, 0.98));
+      border: 1px solid rgba(168, 63, 54, 0.12);
+      display: grid;
+      gap: 10px;
+    }
+
+    .mobile-bulk-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .mobile-list {
+      display: grid;
+      gap: 10px;
+      padding-bottom: 280px;
+    }
+
+    .mobile-card {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.75);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .mobile-card.selected {
+      border-color: rgba(168, 63, 54, 0.24);
+      background: linear-gradient(180deg, rgba(255, 243, 241, 0.96), rgba(255, 250, 248, 0.96));
+    }
+
+    .mobile-card-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .mobile-check {
+      width: 26px;
+      height: 26px;
+      border-radius: 9px;
+      border: 1px solid rgba(168, 63, 54, 0.24);
+      display: grid;
+      place-items: center;
+      color: #a83f36;
+      background: white;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .mobile-card .row-actions {
+      justify-content: space-between;
+    }
+
+    .sheet {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 251, 245, 0.98);
+      border-top-left-radius: 28px;
+      border-top-right-radius: 28px;
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -24px 50px -36px rgba(25, 15, 10, 0.55);
+      padding-top: 12px;
+      padding-bottom: 20px;
+    }
+
+    .sheet-handle {
+      width: 52px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(32, 26, 22, 0.14);
+      margin: 0 auto 16px;
+    }
+
+    .notes {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .note {
+      border-radius: 22px;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.68);
+      border: 1px solid var(--line);
+    }
+
+    .note h3 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+    }
+
+    .note p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    @media (max-width: 960px) {
+      .layout,
+      .mobile-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .drawer {
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .hero {
+        align-items: start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .shell {
+        width: min(100%, calc(100% - 20px));
+        margin: 10px auto 20px;
+      }
+
+      .hero,
+      .list-panel,
+      .drawer,
+      .mobile-preview {
+        padding: 18px;
+      }
+
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">Preview Only</div>
+        <h1>Admin list editing without the endless scroll.</h1>
+        <p>This mockup shows the suggested master-detail approach, plus a bulk-selection mode for mass deletes: a compact searchable list on the left, a focused editor or bulk summary on the right, and a full-screen mobile action sheet.</p>
+      </div>
+      <div class="hero-stats">
+        <div class="stat">
+          <div class="stat-value">56</div>
+          <div class="stat-label">Default Items</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">8</div>
+          <div class="stat-label">Categories</div>
+        </div>
+        <div class="stat">
+          <div class="stat-value">1</div>
+          <div class="stat-label">Open Editor</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="layout">
+      <div class="list-panel">
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <input class="input" type="search" value="" placeholder="Search default items" />
+          </div>
+          <div class="toolbar-right">
+            <select class="select">
+              <option>All categories</option>
+              <option>Produce</option>
+              <option>Dairy</option>
+              <option>Pantry</option>
+            </select>
+            <select class="select">
+              <option>All stores</option>
+              <option>Trader Joe's</option>
+              <option>Costco</option>
+              <option>Target</option>
+            </select>
+            <button class="button button-secondary">Selection Mode</button>
+            <button class="button button-accent">Add Item</button>
+          </div>
+        </div>
+
+        <div class="summary-row">
+          <div>
+            <div class="preview-title">Default Grocery Items</div>
+            <div class="summary">Scan quickly, then either open one item to edit or switch into bulk mode to delete a filtered set.</div>
+          </div>
+          <div class="badge">Master-detail</div>
+        </div>
+
+        <div class="bulk-bar">
+          <div class="bulk-copy">
+            <div class="bulk-title">Selection mode active</div>
+            <div class="bulk-caption">12 items selected from the current filtered view. Use this mode for deliberate mass deletes.</div>
+          </div>
+          <div class="toolbar-right">
+            <button class="button button-secondary">Select All Visible</button>
+            <button class="button button-secondary">Clear</button>
+            <button class="button button-ghost-danger">Delete 12 Items</button>
+          </div>
+        </div>
+
+        <div class="list">
+          <article class="row row-selected">
+            <div class="row-main">
+              <div class="row-selector">✓</div>
+              <div>
+                <div class="row-title">Bananas</div>
+                <div class="meta">
+                  <span class="chip">Produce</span>
+                  <span class="chip">Trader Joe's</span>
+                  <span class="chip">Qty 6</span>
+                  <span class="chip">Sort 10</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <div class="selected-pill">Selected</div>
+              <button class="button button-secondary">Open</button>
+            </div>
+          </article>
+
+          <article class="row row-selected">
+            <div class="row-main">
+              <div class="row-selector">✓</div>
+              <div>
+                <div class="row-title">Whole Milk</div>
+                <div class="meta">
+                  <span class="chip">Dairy</span>
+                  <span class="chip">Target</span>
+                  <span class="chip">Qty 1</span>
+                  <span class="chip">Sort 30</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <div class="selected-pill">Selected</div>
+              <button class="button button-secondary">Open</button>
+            </div>
+          </article>
+
+          <article class="row row-selected">
+            <div class="row-main">
+              <div class="row-selector">✓</div>
+              <div>
+                <div class="row-title">Greek Yogurt</div>
+                <div class="meta">
+                  <span class="chip">Dairy</span>
+                  <span class="chip">Costco</span>
+                  <span class="chip">Qty 2</span>
+                  <span class="chip">Sort 36</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <div class="selected-pill">Selected</div>
+              <button class="button button-secondary">Open</button>
+            </div>
+          </article>
+
+          <article class="row">
+            <div class="row-main">
+              <div class="row-selector"></div>
+              <div>
+                <div class="row-title">Olive Oil</div>
+                <div class="meta">
+                  <span class="chip">Pantry</span>
+                  <span class="chip">Costco</span>
+                  <span class="chip">Qty 1</span>
+                  <span class="chip">Sort 58</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="button button-secondary">Select</button>
+              <button class="button button-primary">Open</button>
+            </div>
+          </article>
+
+          <article class="row">
+            <div class="row-main">
+              <div class="row-selector"></div>
+              <div>
+                <div class="row-title">Chicken Broth</div>
+                <div class="meta">
+                  <span class="chip">Pantry</span>
+                  <span class="chip">Trader Joe's</span>
+                  <span class="chip">Qty 2</span>
+                  <span class="chip">Sort 76</span>
+                </div>
+              </div>
+            </div>
+            <div class="row-actions">
+              <button class="button button-secondary">Select</button>
+              <button class="button button-primary">Open</button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <aside class="drawer">
+        <div class="drawer-header">
+          <div>
+            <div class="eyebrow">Bulk Delete Summary</div>
+            <h2>12 selected items</h2>
+            <p class="helper">When multiple rows are selected, the right panel switches from single-item editing to a bulk review state with the delete action and a clear summary of impact.</p>
+          </div>
+          <div class="badge badge-danger">Bulk mode</div>
+        </div>
+
+        <div class="drawer-form">
+          <div class="danger-note">
+            Delete is scoped to the visible filtered set. This prevents accidentally removing items outside the current search or category filter.
+          </div>
+
+          <div class="field">
+            <label>Selection Summary</label>
+            <input type="text" value="Produce: 5 items • Dairy: 4 items • Pantry: 3 items" />
+          </div>
+
+          <div class="drawer-section">
+            <div class="eyebrow">Selected Items</div>
+            <div class="selection-stack">
+              <div class="selection-chip"><span>Bananas</span><span class="summary">Produce • Trader Joe's</span></div>
+              <div class="selection-chip"><span>Whole Milk</span><span class="summary">Dairy • Target</span></div>
+              <div class="selection-chip"><span>Greek Yogurt</span><span class="summary">Dairy • Costco</span></div>
+              <div class="selection-chip"><span>Olive Oil</span><span class="summary">Pantry • Costco</span></div>
+            </div>
+          </div>
+
+          <div class="drawer-section">
+            <div class="eyebrow">Confirmation</div>
+            <div class="helper">A real implementation would show a second confirmation step here before deleting the current selection.</div>
+          </div>
+
+          <div class="drawer-actions">
+            <button class="button button-danger" type="button">Delete Selected</button>
+            <button class="button button-secondary" type="button">Clear Selection</button>
+            <button class="button button-primary" type="button">Return To Editing</button>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="mobile-preview">
+      <div class="preview-title">Mobile view concept</div>
+      <p class="summary">The mobile version keeps the list light and switches to a pinned bulk-action bar plus confirmation sheet when mass delete mode is active.</p>
+
+      <div class="mobile-layout">
+        <div class="phone">
+          <div class="screen">
+            <div class="mobile-header">
+              <div class="eyebrow">Admin</div>
+              <h2>Default Items</h2>
+            </div>
+
+            <div class="mobile-tools">
+              <input class="input" type="search" placeholder="Search items" />
+              <select class="select">
+                <option>Filter by category</option>
+                <option>Produce</option>
+                <option>Dairy</option>
+              </select>
+            </div>
+
+            <div class="mobile-bulk-bar">
+              <div class="mobile-bulk-top">
+                <div>
+                  <div class="bulk-title">Bulk mode</div>
+                  <div class="bulk-caption">3 selected in filtered view</div>
+                </div>
+                <button class="button button-secondary">Cancel</button>
+              </div>
+              <div class="row-actions">
+                <button class="button button-secondary">Select All</button>
+                <button class="button button-ghost-danger">Delete 3</button>
+              </div>
+            </div>
+
+            <div class="mobile-list">
+              <article class="mobile-card selected">
+                <div class="mobile-card-top">
+                  <div>
+                    <div class="row-title">Bananas</div>
+                    <div class="meta">
+                      <span class="chip">Produce</span>
+                      <span class="chip">Trader Joe's</span>
+                    </div>
+                  </div>
+                  <div class="mobile-check">✓</div>
+                </div>
+                <div class="row-actions">
+                  <div class="summary">Qty 6 • Sort 10</div>
+                  <div class="selected-pill">Selected</div>
+                </div>
+              </article>
+
+              <article class="mobile-card selected">
+                <div class="mobile-card-top">
+                  <div>
+                    <div class="row-title">Whole Milk</div>
+                    <div class="meta">
+                      <span class="chip">Dairy</span>
+                      <span class="chip">Target</span>
+                    </div>
+                  </div>
+                  <div class="mobile-check">✓</div>
+                </div>
+                <div class="row-actions">
+                  <div class="summary">Qty 1 • Sort 30</div>
+                  <div class="selected-pill">Selected</div>
+                </div>
+              </article>
+
+              <article class="mobile-card">
+                <div class="mobile-card-top">
+                  <div>
+                    <div class="row-title">Olive Oil</div>
+                    <div class="meta">
+                      <span class="chip">Pantry</span>
+                      <span class="chip">Costco</span>
+                    </div>
+                  </div>
+                  <div class="mobile-check"></div>
+                </div>
+                <div class="row-actions">
+                  <div class="summary">Qty 1 • Sort 58</div>
+                  <button class="button button-secondary">Select</button>
+                </div>
+              </article>
+            </div>
+
+            <section class="sheet">
+              <div class="sheet-handle"></div>
+              <div class="eyebrow">Confirm Delete</div>
+              <h2>Delete 3 items?</h2>
+              <form class="sheet-form">
+                <div class="field">
+                  <label>Selection Preview</label>
+                  <input type="text" value="Bananas, Whole Milk, Olive Oil" />
+                </div>
+                <div class="sheet-actions">
+                  <button class="button button-danger" type="button">Delete Selected</button>
+                  <button class="button button-secondary" type="button">Back</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </div>
+
+        <div class="notes">
+          <article class="note">
+            <h3>Why this works better</h3>
+            <p>The list becomes a scan surface instead of an endless stack of forms. Editing happens in a dedicated space, and bulk deletes happen in an explicit selection mode rather than through repeated per-row actions.</p>
+          </article>
+          <article class="note">
+            <h3>Desktop bulk behavior</h3>
+            <p>Keep the detail panel visible on larger screens, but swap it into a bulk summary when multiple items are selected. Search and filters stay pinned above the list so mass delete can target only the visible subset.</p>
+          </article>
+          <article class="note">
+            <h3>Mobile bulk behavior</h3>
+            <p>Use a pinned bulk-action bar and a full-height confirmation sheet. This avoids mixing destructive selection controls with dense inline editing on a narrow screen.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

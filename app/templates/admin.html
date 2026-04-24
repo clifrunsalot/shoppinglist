@@ -50,7 +50,7 @@
 
     <section class="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <div class="space-y-6">
-        <section id="default-stores" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
+        <section id="pending-approvals" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div class="flex items-center justify-between gap-4">
             <div>
               <h2 class="text-xl font-bold text-slate-950">Pending Approvals</h2>
@@ -76,115 +76,331 @@
           </div>
         </section>
 
-        <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
+        <section id="users" data-users-section data-reset-password-action-template="{{ url_for('admin_reset_user_password', user_id=0)|replace('/0/reset-password', '/__USER_ID__/reset-password') }}" data-activate-action-template="{{ url_for('admin_activate_user', user_id=0)|replace('/0/activate', '/__USER_ID__/activate') }}" data-deactivate-action-template="{{ url_for('admin_deactivate_user', user_id=0)|replace('/0/deactivate', '/__USER_ID__/deactivate') }}" data-toggle-admin-action-template="{{ url_for('admin_toggle_admin', user_id=0)|replace('/0/admin', '/__USER_ID__/admin') }}" data-delete-action-template="{{ url_for('admin_delete_user', user_id=0)|replace('/0/delete', '/__USER_ID__/delete') }}" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div>
             <h2 class="text-xl font-bold text-slate-950">Users</h2>
-            <p class="mt-1 text-sm text-slate-500">Deactivate users without deleting their data. Reset passwords with one-time temporary passwords when needed.</p>
+            <p class="mt-1 text-sm text-slate-500">Compact rows keep the user list easier to scan. Open one shared action panel at a time instead of repeating every control on every row.</p>
           </div>
-          <div class="mt-5 space-y-4">
-            {% for user in users %}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-sm font-semibold text-slate-900">{{ user.email }}</span>
-                    {% if user.is_admin %}
-                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-700">Admin</span>
-                    {% endif %}
-                    {% if not user.is_active %}
-                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-700">Inactive</span>
-                    {% endif %}
-                  </div>
-                  <div class="mt-1 text-xs text-slate-500">Created {{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'recently' }}</div>
+          <div class="mt-5 space-y-4 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-5 lg:space-y-0">
+            <div class="space-y-4">
+              <div class="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <label class="flex-1">
+                    <span class="sr-only">Search users</span>
+                    <input data-testid="user-search" data-user-search type="search" placeholder="Search users" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                  </label>
+                  <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><span data-user-visible-count>{{ users|length }}</span> visible users</div>
                 </div>
-                <div class="flex flex-wrap gap-2">
-                  <form method="post" action="{{ url_for('admin_reset_user_password', user_id=user.id) }}">
-                    <button type="submit" class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Generate Temp Password</button>
-                  </form>
-                  {% if user.is_active %}
-                  <form method="post" action="{{ url_for('admin_deactivate_user', user_id=user.id) }}">
-                    <button type="submit" class="rounded-full border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-amber-800 transition hover:border-amber-400">Deactivate</button>
-                  </form>
-                  {% else %}
-                  <form method="post" action="{{ url_for('admin_activate_user', user_id=user.id) }}">
-                    <button type="submit" class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800 transition hover:border-emerald-400">Reactivate</button>
-                  </form>
-                  {% endif %}
-                  {% if user.is_admin %}
-                  <form method="post" action="{{ url_for('admin_toggle_admin', user_id=user.id) }}">
-                    <input type="hidden" name="is_admin" value="false" />
-                    <button type="submit" class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Remove Admin</button>
-                  </form>
-                  {% else %}
-                  <form method="post" action="{{ url_for('admin_toggle_admin', user_id=user.id) }}">
-                    <input type="hidden" name="is_admin" value="true" />
-                    <button type="submit" class="rounded-full border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-sky-800 transition hover:border-sky-400">Make Admin</button>
-                  </form>
-                  {% endif %}
+              </div>
+
+              <div class="space-y-3" data-user-list>
+                {% for user in users %}
+                {% set created_label = user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'recently' %}
+                <article data-user-row data-user-id="{{ user.id }}" data-email="{{ user.email }}" data-search="{{ user.email|lower }} {{ 'admin' if user.is_admin else '' }} {{ 'inactive' if not user.is_active else 'active' }} {{ 'protected admin' if protected_admin_user_id == user.id else '' }}" data-created-label="{{ created_label }}" data-is-admin="{{ 'true' if user.is_admin else 'false' }}" data-is-active="{{ 'true' if user.is_active else 'false' }}" data-is-protected="{{ 'true' if protected_admin_user_id == user.id else 'false' }}" class="rounded-3xl border border-slate-200 bg-slate-50 p-4 transition">
+                  <div class="flex items-start justify-between gap-3">
+                    <button type="button" data-testid="user-open-{{ user.id }}" data-user-open data-user-id="{{ user.id }}" class="min-w-0 flex-1 text-left">
+                      <div class="truncate text-base font-semibold text-slate-900">{{ user.email }}</div>
+                      <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                        {% if user.is_admin %}
+                        <span class="rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-700">Admin</span>
+                        {% endif %}
+                        {% if protected_admin_user_id == user.id %}
+                        <span class="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700">Protected Admin</span>
+                        {% endif %}
+                        {% if not user.is_active %}
+                        <span class="rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-700">Inactive</span>
+                        {% else %}
+                        <span class="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-700">Active</span>
+                        {% endif %}
+                        <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">Created {{ created_label }}</span>
+                      </div>
+                    </button>
+
+                    <button type="button" data-user-open data-user-id="{{ user.id }}" class="shrink-0 rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Actions</button>
+                  </div>
+                </article>
+                {% else %}
+                <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No users yet.</div>
+                {% endfor %}
+                <div data-user-empty class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No users match the current search.</div>
+              </div>
+            </div>
+
+            <aside class="hidden lg:block">
+              <div data-testid="user-detail-panel" data-user-desktop-panel class="sticky top-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <div data-user-empty-state class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-500">Select a user to manage access and passwords.</div>
+
+                <div data-user-editor class="hidden space-y-4">
+                  <div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Desktop Actions</div>
+                    <h3 data-user-title class="mt-2 break-all text-xl font-bold text-slate-950"></h3>
+                    <div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                      <span data-user-admin-badge class="hidden rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-700">Admin</span>
+                      <span data-user-protected-badge class="hidden rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700">Protected Admin</span>
+                      <span data-user-status-badge class="rounded-full px-2.5 py-1 font-semibold"></span>
+                      <span data-user-created class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600"></span>
+                    </div>
+                    <p data-user-protected-copy class="hidden mt-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">This admin account is protected and must remain active with admin access.</p>
+                  </div>
+
+                  <div class="grid gap-2">
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-reset-form>
+                      <button type="submit" class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Generate Temp Password</button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-status-form>
+                      <button type="submit" data-user-status-button class="w-full rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] transition"></button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-admin-form>
+                      <input type="hidden" name="is_admin" data-user-admin-input />
+                      <button type="submit" data-user-admin-button class="w-full rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] transition"></button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-delete-form>
+                      <button type="submit" data-user-delete-button class="w-full rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete User</button>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div data-user-mobile-shell class="pointer-events-none fixed inset-0 z-50 hidden lg:hidden">
+            <div data-user-mobile-backdrop class="absolute inset-0 bg-slate-950/55"></div>
+            <div class="pointer-events-auto absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-5 shadow-[0_-24px_60px_-24px_rgba(15,23,42,0.55)]">
+              <div class="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+              <div data-testid="user-mobile-panel" data-user-mobile-panel>
+                <div data-user-mobile-empty class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">Select a user to manage access and passwords.</div>
+
+                <div data-user-mobile-editor class="hidden space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mobile Actions</div>
+                      <h3 data-user-mobile-title class="mt-2 break-all text-lg font-bold text-slate-950"></h3>
+                    </div>
+                    <button type="button" data-user-mobile-close class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Close</button>
+                  </div>
+
+                  <div class="flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span data-user-mobile-admin-badge class="hidden rounded-full bg-sky-100 px-2.5 py-1 font-semibold text-sky-700">Admin</span>
+                    <span data-user-mobile-protected-badge class="hidden rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700">Protected Admin</span>
+                    <span data-user-mobile-status-badge class="rounded-full px-2.5 py-1 font-semibold"></span>
+                    <span data-user-mobile-created class="rounded-full bg-slate-50 px-2.5 py-1 font-semibold text-slate-600"></span>
+                  </div>
+                  <p data-user-mobile-protected-copy class="hidden rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">This admin account is protected and must remain active with admin access.</p>
+
+                  <div class="grid gap-2">
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-mobile-reset-form>
+                      <button type="submit" class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Generate Temp Password</button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-mobile-status-form>
+                      <button type="submit" data-user-mobile-status-button class="w-full rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] transition"></button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-mobile-admin-form>
+                      <input type="hidden" name="is_admin" data-user-mobile-admin-input />
+                      <button type="submit" data-user-mobile-admin-button class="w-full rounded-2xl px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] transition"></button>
+                    </form>
+                    <form method="post" data-preserve-scroll-form data-scroll-target="users" data-user-mobile-delete-form>
+                      <button type="submit" data-user-mobile-delete-button class="w-full rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete User</button>
+                    </form>
+                  </div>
                 </div>
               </div>
             </div>
-            {% endfor %}
           </div>
         </section>
 
-        <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
+        <section id="default-stores" data-default-stores-section data-update-action-template="{{ url_for('admin_update_default_store', store_id=0)|replace('/0/update', '/__STORE_ID__/update') }}" data-delete-action-template="{{ url_for('admin_delete_default_store', store_id=0)|replace('/0/delete', '/__STORE_ID__/delete') }}" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div>
             <h2 class="text-xl font-bold text-slate-950">Default Stores</h2>
-            <p class="mt-1 text-sm text-slate-500">These stores are copied into each newly approved account and sorted alphabetically.</p>
+            <p class="mt-1 text-sm text-slate-500">Compact rows keep the store list scannable. Edit one selected store at a time instead of expanding every row.</p>
           </div>
 
-          <form method="post" action="{{ url_for('admin_create_default_store') }}" data-preserve-scroll-form data-scroll-target="default-stores" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_auto]">
-            <input data-testid="default-store-create-name" type="text" name="name" placeholder="Store name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add Store</button>
+          <form method="post" action="{{ url_for('admin_create_default_store') }}" data-preserve-scroll-form data-scroll-target="default-stores" class="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <input data-testid="default-store-search" data-default-store-search type="search" placeholder="Search stores" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+              <div class="flex gap-3 sm:w-auto">
+                <input data-testid="default-store-create-name" type="text" name="name" placeholder="Add store" required class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 sm:w-56" />
+                <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add</button>
+              </div>
+            </div>
           </form>
 
-          <div class="mt-5 space-y-3">
-            {% for store in default_stores %}
-            <form method="post" action="{{ url_for('admin_update_default_store', store_id=store.id) }}" data-preserve-scroll-form data-scroll-target="default-stores" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto_auto]">
-              <input data-testid="default-store-name-{{ store.id }}" type="text" name="name" value="{{ store.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Save</button>
-              <button data-testid="default-store-delete-{{ store.id }}" formaction="{{ url_for('admin_delete_default_store', store_id=store.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
-            </form>
-            {% else %}
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default stores yet.</div>
-            {% endfor %}
+          <div class="mt-5 space-y-4 lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-5 lg:space-y-0">
+            <div class="space-y-3" data-default-store-list>
+              {% for store in default_stores %}
+              <article data-default-store-row data-store-id="{{ store.id }}" data-name="{{ store.name }}" data-search="{{ store.name|lower }}" class="rounded-3xl border border-slate-200 bg-slate-50 p-4 transition">
+                <div class="flex items-center justify-between gap-3">
+                  <button type="button" data-testid="default-store-open-{{ store.id }}" data-default-store-open data-store-id="{{ store.id }}" class="min-w-0 flex-1 text-left">
+                    <div class="truncate text-base font-semibold text-slate-900">{{ store.name }}</div>
+                    <div class="mt-2 text-xs text-slate-500">Tap to edit this store in a shared panel.</div>
+                  </button>
+                  <div class="flex shrink-0 gap-2">
+                    <button type="button" data-default-store-open data-store-id="{{ store.id }}" class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Edit</button>
+                    <button type="button" data-testid="default-store-delete-{{ store.id }}" data-default-store-delete data-store-id="{{ store.id }}" class="rounded-full border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+                  </div>
+                </div>
+              </article>
+              {% else %}
+              <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default stores yet.</div>
+              {% endfor %}
+              <div data-default-store-empty class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default stores match the current search.</div>
+            </div>
+
+            <aside class="hidden lg:block">
+              <div data-testid="default-store-detail-panel" data-default-store-desktop-panel class="sticky top-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <div data-default-store-empty-state class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-500">Select a store to edit its name.</div>
+
+                <div data-default-store-editor class="hidden space-y-4">
+                  <div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Desktop Editor</div>
+                    <h3 data-default-store-title class="mt-2 text-xl font-bold text-slate-950"></h3>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-stores" data-default-store-detail-form class="grid gap-3">
+                    <input type="text" name="name" data-default-store-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save Store</button>
+                      <button type="button" data-default-store-single-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete Store</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-stores" data-default-store-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div data-default-store-mobile-shell class="pointer-events-none fixed inset-0 z-50 hidden lg:hidden">
+            <div data-default-store-mobile-backdrop class="absolute inset-0 bg-slate-950/55"></div>
+            <div class="pointer-events-auto absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-5 shadow-[0_-24px_60px_-24px_rgba(15,23,42,0.55)]">
+              <div class="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+              <div data-testid="default-store-mobile-panel" data-default-store-mobile-panel>
+                <div data-default-store-mobile-empty class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">Select a store to edit it.</div>
+
+                <div data-default-store-mobile-editor class="hidden space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mobile Editor</div>
+                      <h3 data-default-store-mobile-title class="mt-2 text-lg font-bold text-slate-950"></h3>
+                    </div>
+                    <button type="button" data-default-store-mobile-close class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Close</button>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-stores" data-default-store-mobile-form class="grid gap-3">
+                    <input type="text" name="name" data-default-store-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save</button>
+                      <button type="button" data-default-store-mobile-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-stores" data-default-store-mobile-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section id="default-categories" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
+        <section id="default-categories" data-default-categories-section data-update-action-template="{{ url_for('admin_update_default_category', category_id=0)|replace('/0/update', '/__CATEGORY_ID__/update') }}" data-delete-action-template="{{ url_for('admin_delete_default_category', category_id=0)|replace('/0/delete', '/__CATEGORY_ID__/delete') }}" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div>
             <h2 class="text-xl font-bold text-slate-950">Default Categories</h2>
-            <p class="mt-1 text-sm text-slate-500">Categories are managed centrally and appear as dropdown choices throughout the app.</p>
+            <p class="mt-1 text-sm text-slate-500">Compact rows keep categories easy to scan. Edit one selected category at a time instead of expanding every row.</p>
           </div>
 
-          <form method="post" action="{{ url_for('admin_create_default_category') }}" data-preserve-scroll-form data-scroll-target="default-categories" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-[1fr_auto]">
-            <input data-testid="default-category-create-name" type="text" name="name" placeholder="Category name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-            <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add Category</button>
+          <form method="post" action="{{ url_for('admin_create_default_category') }}" data-preserve-scroll-form data-scroll-target="default-categories" class="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4">
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <input data-testid="default-category-search" data-default-category-search type="search" placeholder="Search categories" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+              <div class="flex gap-3 sm:w-auto">
+                <input data-testid="default-category-create-name" type="text" name="name" placeholder="Add category" required class="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 sm:w-56" />
+                <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Add</button>
+              </div>
+            </div>
           </form>
 
-          <div class="mt-5 space-y-3">
-            {% for category in default_categories %}
-            <form method="post" action="{{ url_for('admin_update_default_category', category_id=category.id) }}" data-preserve-scroll-form data-scroll-target="default-categories" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 lg:grid-cols-[1fr_auto_auto]">
-              <input data-testid="default-category-name-{{ category.id }}" type="text" name="name" value="{{ category.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Save</button>
-              <button data-testid="default-category-delete-{{ category.id }}" formaction="{{ url_for('admin_delete_default_category', category_id=category.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
-            </form>
-            {% else %}
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default categories yet.</div>
-            {% endfor %}
+          <div class="mt-5 space-y-4 lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-5 lg:space-y-0">
+            <div class="space-y-3" data-default-category-list>
+              {% for category in default_categories %}
+              <article data-default-category-row data-category-id="{{ category.id }}" data-name="{{ category.name }}" data-search="{{ category.name|lower }}" class="rounded-3xl border border-slate-200 bg-slate-50 p-4 transition">
+                <div class="flex items-center justify-between gap-3">
+                  <button type="button" data-testid="default-category-open-{{ category.id }}" data-default-category-open data-category-id="{{ category.id }}" class="min-w-0 flex-1 text-left">
+                    <div class="truncate text-base font-semibold text-slate-900">{{ category.name }}</div>
+                    <div class="mt-2 text-xs text-slate-500">Tap to edit this category in a shared panel.</div>
+                  </button>
+                  <div class="flex shrink-0 gap-2">
+                    <button type="button" data-default-category-open data-category-id="{{ category.id }}" class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Edit</button>
+                    <button type="button" data-testid="default-category-delete-{{ category.id }}" data-default-category-delete data-category-id="{{ category.id }}" class="rounded-full border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+                  </div>
+                </div>
+              </article>
+              {% else %}
+              <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default categories yet.</div>
+              {% endfor %}
+              <div data-default-category-empty class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default categories match the current search.</div>
+            </div>
+
+            <aside class="hidden lg:block">
+              <div data-testid="default-category-detail-panel" data-default-category-desktop-panel class="sticky top-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <div data-default-category-empty-state class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-500">Select a category to edit its name.</div>
+
+                <div data-default-category-editor class="hidden space-y-4">
+                  <div>
+                    <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Desktop Editor</div>
+                    <h3 data-default-category-title class="mt-2 text-xl font-bold text-slate-950"></h3>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-categories" data-default-category-detail-form class="grid gap-3">
+                    <input type="text" name="name" data-default-category-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save Category</button>
+                      <button type="button" data-default-category-single-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete Category</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-categories" data-default-category-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div data-default-category-mobile-shell class="pointer-events-none fixed inset-0 z-50 hidden lg:hidden">
+            <div data-default-category-mobile-backdrop class="absolute inset-0 bg-slate-950/55"></div>
+            <div class="pointer-events-auto absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-5 shadow-[0_-24px_60px_-24px_rgba(15,23,42,0.55)]">
+              <div class="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+              <div data-testid="default-category-mobile-panel" data-default-category-mobile-panel>
+                <div data-default-category-mobile-empty class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">Select a category to edit it.</div>
+
+                <div data-default-category-mobile-editor class="hidden space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mobile Editor</div>
+                      <h3 data-default-category-mobile-title class="mt-2 text-lg font-bold text-slate-950"></h3>
+                    </div>
+                    <button type="button" data-default-category-mobile-close class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Close</button>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-categories" data-default-category-mobile-form class="grid gap-3">
+                    <input type="text" name="name" data-default-category-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save</button>
+                      <button type="button" data-default-category-mobile-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-categories" data-default-category-mobile-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)]">
+        <section id="default-items" data-default-items-section data-update-action-template="{{ url_for('admin_update_default_item', item_id=0)|replace('/0/update', '/__ITEM_ID__/update') }}" data-delete-action-template="{{ url_for('admin_delete_default_item', item_id=0)|replace('/0/delete', '/__ITEM_ID__/delete') }}" class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-[0_30px_80px_-45px_rgba(15,23,42,0.25)] scroll-mt-6">
           <div>
             <h2 class="text-xl font-bold text-slate-950">Default Grocery List</h2>
-            <p class="mt-1 text-sm text-slate-500">Each item keeps a stable template identity so future sync work can match the same logical default without overwriting user edits.</p>
+            <p class="mt-1 text-sm text-slate-500">Mobile-first editing keeps the list compact, opens a focused item sheet when needed, and supports bulk delete without forcing admins to scroll through dozens of inline forms.</p>
           </div>
 
-          <form method="post" action="{{ url_for('admin_create_default_item') }}" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6">
+          <form method="post" action="{{ url_for('admin_create_default_item') }}" data-preserve-scroll-form data-scroll-target="default-items" class="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-6">
             <input data-testid="default-item-create-name" type="text" name="name" placeholder="Item name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2" />
-            <input data-testid="default-item-create-quantity" type="number" name="quantity" step="0.1" min="0" placeholder="Quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <input data-testid="default-item-create-quantity" type="number" name="quantity" step="0.1" min="0" value="1" placeholder="Quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
             <input data-testid="default-item-create-unit" type="text" name="unit" placeholder="Unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
             <select data-testid="default-item-create-category" name="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
               <option value="">No category</option>
@@ -192,7 +408,7 @@
               <option value="{{ category.name }}">{{ category.name }}</option>
               {% endfor %}
             </select>
-            <input data-testid="default-item-create-sort-order" type="number" name="sort_order" min="0" step="1" placeholder="Sort order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+            <input data-testid="default-item-create-sort-order" type="number" name="sort_order" min="0" step="1" value="0" placeholder="Sort order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
             <select data-testid="default-item-create-store-template" name="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2">
               <option value="">No store</option>
               {% for store in default_stores %}
@@ -202,31 +418,181 @@
             <button data-testid="default-item-create-submit" type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800 md:col-span-4">Add Default Item</button>
           </form>
 
-          <div class="mt-5 space-y-3">
-            {% for item in default_items %}
-            <form method="post" action="{{ url_for('admin_update_default_item', item_id=item.id) }}" class="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-8">
-              <input type="text" name="name" value="{{ item.name }}" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2" />
-              <input type="number" name="quantity" step="0.1" min="0" value="{{ item.quantity }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <input type="text" name="unit" value="{{ item.unit or '' }}" placeholder="Unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <select name="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
-                <option value="">No category</option>
-                {% for category in default_categories %}
-                <option value="{{ category.name }}" {% if item.category == category.name %}selected{% endif %}>{{ category.name }}</option>
+          <div class="mt-5 space-y-4 lg:grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:gap-5 lg:space-y-0">
+            <div class="space-y-4">
+              <div class="rounded-3xl border border-slate-200 bg-slate-50/80 p-4">
+                <div class="flex flex-col gap-3">
+                  <div class="flex flex-col gap-3 sm:flex-row">
+                    <label class="flex-1">
+                      <span class="sr-only">Search default items</span>
+                      <input data-testid="default-item-search" data-default-item-search type="search" placeholder="Search items, categories, or stores" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    </label>
+                    <label class="sm:w-56">
+                      <span class="sr-only">Filter default items by category</span>
+                      <select data-testid="default-item-category-filter" data-default-item-filter class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                        <option value="">All categories</option>
+                        {% for category in default_categories %}
+                        <option value="{{ category.name|lower }}">{{ category.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><span data-default-item-visible-count>{{ default_items|length }}</span> visible items</div>
+                    <button type="button" data-testid="default-item-selection-toggle" data-default-item-selection-toggle class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Select Items</button>
+                  </div>
+                </div>
+              </div>
+
+              <form method="post" action="{{ url_for('admin_bulk_delete_default_items') }}" data-preserve-scroll-form data-scroll-target="default-items" data-default-item-bulk-form class="hidden rounded-3xl border border-rose-200 bg-rose-50/90 p-4 shadow-sm">
+                <div class="flex flex-col gap-3">
+                  <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-rose-700">Bulk Delete Mode</div>
+                      <div class="mt-1 text-sm text-rose-700"><span data-default-item-selected-count>0</span> selected from the filtered list.</div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button type="button" data-default-item-select-visible class="rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300">Select Visible</button>
+                      <button type="button" data-default-item-clear-selection class="rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300">Clear</button>
+                    </div>
+                  </div>
+                  <div class="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    <button type="button" data-default-item-selection-done class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Done</button>
+                    <button type="submit" data-testid="default-item-bulk-delete-submit" data-default-item-bulk-submit class="rounded-full border border-rose-300 bg-rose-100 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400 disabled:cursor-not-allowed disabled:opacity-50">Delete Selected</button>
+                  </div>
+                </div>
+              </form>
+
+              <div class="space-y-3" data-default-item-list>
+                {% for item in default_items %}
+                <article data-default-item-row data-item-id="{{ item.id }}" data-name="{{ item.name }}" data-quantity="{{ item.quantity }}" data-unit="{{ item.unit or '' }}" data-category="{{ item.category or '' }}" data-category-filter="{{ (item.category or '')|lower }}" data-sort-order="{{ item.sort_order }}" data-store-template-id="{{ item.store_template_id or '' }}" data-store-name="{{ item.default_store_template.name if item.default_store_template else '' }}" data-search="{{ (item.name ~ ' ' ~ (item.category or '') ~ ' ' ~ (item.default_store_template.name if item.default_store_template else ''))|lower }}" class="rounded-3xl border border-slate-200 bg-slate-50 p-4 transition">
+                  <div class="flex items-start gap-3">
+                    <label data-default-item-select-wrap class="hidden pt-1">
+                      <input data-default-item-select-input type="checkbox" value="{{ item.id }}" class="sr-only" />
+                      <span class="flex h-6 w-6 items-center justify-center rounded-lg border border-slate-300 bg-white text-sm font-bold text-rose-700" data-default-item-checkmark>+</span>
+                    </label>
+
+                    <div class="min-w-0 flex-1">
+                      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <button type="button" data-testid="default-item-open-{{ item.id }}" data-default-item-open data-item-id="{{ item.id }}" class="min-w-0 flex-1 text-left">
+                          <div class="truncate text-base font-semibold text-slate-900">{{ item.name }}</div>
+                          <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                            <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">Qty {{ item.quantity }}</span>
+                            <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">{{ item.unit or 'No unit' }}</span>
+                            <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">{{ item.category or 'No category' }}</span>
+                            <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">{{ item.default_store_template.name if item.default_store_template else 'No store' }}</span>
+                            <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">Sort {{ item.sort_order }}</span>
+                          </div>
+                        </button>
+
+                        <div class="flex shrink-0 flex-wrap gap-2">
+                          <button type="button" data-default-item-select-button data-item-id="{{ item.id }}" class="hidden rounded-full border border-rose-200 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-300">Select</button>
+                          <button type="button" data-default-item-open data-item-id="{{ item.id }}" class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Edit</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+                {% else %}
+                <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default grocery items yet.</div>
                 {% endfor %}
-              </select>
-              <input type="number" name="sort_order" min="0" step="1" value="{{ item.sort_order }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
-              <select name="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100 md:col-span-2">
-                <option value="">No store</option>
-                {% for store in default_stores %}
-                <option value="{{ store.id }}" {% if item.store_template_id == store.id %}selected{% endif %}>{{ store.name }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit" class="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Save</button>
-              <button formaction="{{ url_for('admin_delete_default_item', item_id=item.id) }}" class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete</button>
-            </form>
-            {% else %}
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default grocery items yet.</div>
-            {% endfor %}
+                <div data-default-item-empty class="hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">No default items match the current filters.</div>
+              </div>
+            </div>
+
+            <aside class="hidden lg:block">
+              <div data-testid="default-item-detail-panel" data-default-item-desktop-panel class="sticky top-6 rounded-[2rem] border border-slate-200 bg-slate-50 p-5 shadow-sm">
+                <div data-default-item-empty-state class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-4 py-5 text-sm text-slate-500">Select an item to edit its details.</div>
+
+                <div data-default-item-editor class="hidden space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Desktop Editor</div>
+                      <h3 data-default-item-title class="mt-2 text-xl font-bold text-slate-950"></h3>
+                    </div>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-items" data-default-item-detail-form class="grid gap-3">
+                    <input type="text" name="name" data-default-item-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <input type="number" name="quantity" step="0.1" min="0" data-default-item-field="quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                      <input type="text" name="unit" placeholder="Unit" data-default-item-field="unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <select name="category" data-default-item-field="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                        <option value="">No category</option>
+                        {% for category in default_categories %}
+                        <option value="{{ category.name }}">{{ category.name }}</option>
+                        {% endfor %}
+                      </select>
+                      <input type="number" name="sort_order" min="0" step="1" data-default-item-field="sort_order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    </div>
+                    <select name="store_template_id" data-default-item-field="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                      <option value="">No store</option>
+                      {% for store in default_stores %}
+                      <option value="{{ store.id }}">{{ store.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save Item</button>
+                      <button type="button" data-default-item-single-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete Item</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-items" data-default-item-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div data-default-item-mobile-shell class="pointer-events-none fixed inset-0 z-50 hidden lg:hidden">
+            <div data-default-item-mobile-backdrop class="absolute inset-0 bg-slate-950/55"></div>
+            <div class="pointer-events-auto absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-5 shadow-[0_-24px_60px_-24px_rgba(15,23,42,0.55)]">
+              <div class="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+              <div data-testid="default-item-mobile-panel" data-default-item-mobile-panel>
+                <div data-default-item-mobile-empty class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-500">Select an item to edit it.</div>
+
+                <div data-default-item-mobile-editor class="hidden space-y-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Mobile Editor</div>
+                      <h3 data-default-item-mobile-title class="mt-2 text-lg font-bold text-slate-950"></h3>
+                    </div>
+                    <button type="button" data-default-item-mobile-close class="rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400">Close</button>
+                  </div>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-items" data-default-item-mobile-form class="grid gap-3">
+                    <input type="text" name="name" data-default-item-field="name" required class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <input type="number" name="quantity" step="0.1" min="0" data-default-item-field="quantity" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                      <input type="text" name="unit" placeholder="Unit" data-default-item-field="unit" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <select name="category" data-default-item-field="category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                        <option value="">No category</option>
+                        {% for category in default_categories %}
+                        <option value="{{ category.name }}">{{ category.name }}</option>
+                        {% endfor %}
+                      </select>
+                      <input type="number" name="sort_order" min="0" step="1" data-default-item-field="sort_order" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100" />
+                    </div>
+                    <select name="store_template_id" data-default-item-field="store_template_id" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-4 focus:ring-slate-100">
+                      <option value="">No store</option>
+                      {% for store in default_stores %}
+                      <option value="{{ store.id }}">{{ store.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Save Item</button>
+                      <button type="button" data-default-item-mobile-delete class="rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-rose-700 transition hover:border-rose-400">Delete Item</button>
+                    </div>
+                  </form>
+
+                  <form method="post" data-preserve-scroll-form data-scroll-target="default-items" data-default-item-mobile-delete-form class="hidden"></form>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </div>
@@ -255,6 +621,10 @@
     const logoutButton = document.querySelector('[data-logout-button]');
     const copyPasswordButtons = document.querySelectorAll('[data-copy-temp-password]');
     const preserveScrollForms = document.querySelectorAll('[data-preserve-scroll-form]');
+    const usersSection = document.querySelector('[data-users-section]');
+    const defaultStoresSection = document.querySelector('[data-default-stores-section]');
+    const defaultCategoriesSection = document.querySelector('[data-default-categories-section]');
+    const defaultItemsSection = document.querySelector('[data-default-items-section]');
 
     function restoreAdminScrollPosition() {
       const savedTarget = window.sessionStorage.getItem(adminScrollStorageKey);
@@ -334,6 +704,1055 @@
         }, 1600);
       });
     });
+
+    document.querySelectorAll('[data-confirm-message]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        const message = button.getAttribute('data-confirm-message') || 'Are you sure?';
+        if (!window.confirm(message)) {
+          event.preventDefault();
+        }
+      });
+    });
+
+    if (usersSection) {
+      const resetPasswordActionTemplate = usersSection.getAttribute('data-reset-password-action-template') || '';
+      const activateActionTemplate = usersSection.getAttribute('data-activate-action-template') || '';
+      const deactivateActionTemplate = usersSection.getAttribute('data-deactivate-action-template') || '';
+      const toggleAdminActionTemplate = usersSection.getAttribute('data-toggle-admin-action-template') || '';
+      const deleteActionTemplate = usersSection.getAttribute('data-delete-action-template') || '';
+      const userRows = Array.from(usersSection.querySelectorAll('[data-user-row]'));
+      const searchInput = usersSection.querySelector('[data-user-search]');
+      const visibleCount = usersSection.querySelector('[data-user-visible-count]');
+      const emptyListMessage = usersSection.querySelector('[data-user-empty]');
+      const desktopEmptyState = usersSection.querySelector('[data-user-empty-state]');
+      const desktopEditor = usersSection.querySelector('[data-user-editor]');
+      const desktopTitle = usersSection.querySelector('[data-user-title]');
+      const desktopAdminBadge = usersSection.querySelector('[data-user-admin-badge]');
+      const desktopProtectedBadge = usersSection.querySelector('[data-user-protected-badge]');
+      const desktopProtectedCopy = usersSection.querySelector('[data-user-protected-copy]');
+      const desktopStatusBadge = usersSection.querySelector('[data-user-status-badge]');
+      const desktopCreated = usersSection.querySelector('[data-user-created]');
+      const desktopResetForm = usersSection.querySelector('[data-user-reset-form]');
+      const desktopStatusForm = usersSection.querySelector('[data-user-status-form]');
+      const desktopStatusButton = usersSection.querySelector('[data-user-status-button]');
+      const desktopAdminForm = usersSection.querySelector('[data-user-admin-form]');
+      const desktopAdminInput = usersSection.querySelector('[data-user-admin-input]');
+      const desktopAdminButton = usersSection.querySelector('[data-user-admin-button]');
+      const desktopDeleteForm = usersSection.querySelector('[data-user-delete-form]');
+      const desktopDeleteButton = usersSection.querySelector('[data-user-delete-button]');
+      const mobileShell = usersSection.querySelector('[data-user-mobile-shell]');
+      const mobileBackdrop = usersSection.querySelector('[data-user-mobile-backdrop]');
+      const mobileEmptyState = usersSection.querySelector('[data-user-mobile-empty]');
+      const mobileEditor = usersSection.querySelector('[data-user-mobile-editor]');
+      const mobileTitle = usersSection.querySelector('[data-user-mobile-title]');
+      const mobileAdminBadge = usersSection.querySelector('[data-user-mobile-admin-badge]');
+      const mobileProtectedBadge = usersSection.querySelector('[data-user-mobile-protected-badge]');
+      const mobileProtectedCopy = usersSection.querySelector('[data-user-mobile-protected-copy]');
+      const mobileStatusBadge = usersSection.querySelector('[data-user-mobile-status-badge]');
+      const mobileCreated = usersSection.querySelector('[data-user-mobile-created]');
+      const mobileResetForm = usersSection.querySelector('[data-user-mobile-reset-form]');
+      const mobileStatusForm = usersSection.querySelector('[data-user-mobile-status-form]');
+      const mobileStatusButton = usersSection.querySelector('[data-user-mobile-status-button]');
+      const mobileAdminForm = usersSection.querySelector('[data-user-mobile-admin-form]');
+      const mobileAdminInput = usersSection.querySelector('[data-user-mobile-admin-input]');
+      const mobileAdminButton = usersSection.querySelector('[data-user-mobile-admin-button]');
+      const mobileDeleteForm = usersSection.querySelector('[data-user-mobile-delete-form]');
+      const mobileDeleteButton = usersSection.querySelector('[data-user-mobile-delete-button]');
+      const mobileCloseButton = usersSection.querySelector('[data-user-mobile-close]');
+      const desktopQuery = window.matchMedia('(min-width: 1024px)');
+
+      let selectedUserId = userRows[0]?.getAttribute('data-user-id') || null;
+
+      function getUserData(row) {
+        return {
+          id: row.getAttribute('data-user-id') || '',
+          email: row.getAttribute('data-email') || '',
+          createdLabel: row.getAttribute('data-created-label') || 'recently',
+          isAdmin: row.getAttribute('data-is-admin') === 'true',
+          isActive: row.getAttribute('data-is-active') === 'true',
+          isProtected: row.getAttribute('data-is-protected') === 'true',
+        };
+      }
+
+      function buildAction(template, userId) {
+        return template.replace('__USER_ID__', userId);
+      }
+
+      function isDesktop() {
+        return desktopQuery.matches;
+      }
+
+      function openMobileEditor() {
+        if (!mobileShell || isDesktop()) {
+          return;
+        }
+
+        mobileShell.classList.remove('hidden');
+        mobileShell.classList.remove('pointer-events-none');
+        document.body.classList.add('overflow-hidden');
+      }
+
+      function closeMobileEditor() {
+        if (!mobileShell) {
+          return;
+        }
+
+        mobileShell.classList.add('hidden');
+        mobileShell.classList.add('pointer-events-none');
+        document.body.classList.remove('overflow-hidden');
+      }
+
+      function applyStatusBadge(element, user) {
+        if (!element || !user) {
+          return;
+        }
+
+        element.textContent = user.isActive ? 'Active' : 'Inactive';
+        element.className = user.isActive
+          ? 'rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-700'
+          : 'rounded-full bg-amber-100 px-2.5 py-1 font-semibold text-amber-700';
+      }
+
+      function applyStatusButton(button, user) {
+        if (!button || !user) {
+          return;
+        }
+
+        button.textContent = user.isActive ? 'Deactivate' : 'Reactivate';
+        button.className = user.isActive
+          ? 'w-full rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-amber-800 transition hover:border-amber-400'
+          : 'w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-emerald-800 transition hover:border-emerald-400';
+      }
+
+      function applyAdminButton(button, input, user) {
+        if (!button || !input || !user) {
+          return;
+        }
+
+        input.value = user.isAdmin ? 'false' : 'true';
+        button.textContent = user.isAdmin ? 'Remove Admin' : 'Make Admin';
+        button.className = user.isAdmin
+          ? 'w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-700 transition hover:border-slate-400'
+          : 'w-full rounded-2xl border border-sky-300 bg-sky-50 px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-sky-800 transition hover:border-sky-400';
+      }
+
+      function populateActionForms(user) {
+        if (!user) {
+          return;
+        }
+
+        if (desktopResetForm) {
+          desktopResetForm.action = buildAction(resetPasswordActionTemplate, user.id);
+        }
+        if (mobileResetForm) {
+          mobileResetForm.action = buildAction(resetPasswordActionTemplate, user.id);
+        }
+        if (desktopStatusForm) {
+          desktopStatusForm.action = buildAction(user.isActive ? deactivateActionTemplate : activateActionTemplate, user.id);
+        }
+        if (mobileStatusForm) {
+          mobileStatusForm.action = buildAction(user.isActive ? deactivateActionTemplate : activateActionTemplate, user.id);
+        }
+        if (desktopAdminForm) {
+          desktopAdminForm.action = buildAction(toggleAdminActionTemplate, user.id);
+        }
+        if (mobileAdminForm) {
+          mobileAdminForm.action = buildAction(toggleAdminActionTemplate, user.id);
+        }
+        if (desktopDeleteForm) {
+          desktopDeleteForm.action = buildAction(deleteActionTemplate, user.id);
+        }
+        if (mobileDeleteForm) {
+          mobileDeleteForm.action = buildAction(deleteActionTemplate, user.id);
+        }
+
+        applyStatusButton(desktopStatusButton, user);
+        applyStatusButton(mobileStatusButton, user);
+        applyAdminButton(desktopAdminButton, desktopAdminInput, user);
+        applyAdminButton(mobileAdminButton, mobileAdminInput, user);
+
+        [desktopStatusButton, mobileStatusButton, desktopAdminButton, mobileAdminButton, desktopDeleteButton, mobileDeleteButton].forEach((button) => {
+          if (!button) {
+            return;
+          }
+          button.disabled = user.isProtected;
+          button.classList.toggle('cursor-not-allowed', user.isProtected);
+          button.classList.toggle('opacity-50', user.isProtected);
+        });
+      }
+
+      function syncEditors() {
+        const activeRow = userRows.find((row) => row.getAttribute('data-user-id') === selectedUserId && !row.classList.contains('hidden'));
+        const user = activeRow ? getUserData(activeRow) : null;
+
+        if (desktopEditor && desktopEmptyState) {
+          desktopEditor.classList.toggle('hidden', !user);
+          desktopEmptyState.classList.toggle('hidden', Boolean(user));
+        }
+        if (mobileEditor && mobileEmptyState) {
+          mobileEditor.classList.toggle('hidden', !user);
+          mobileEmptyState.classList.toggle('hidden', Boolean(user));
+        }
+
+        if (!user) {
+          return;
+        }
+
+        if (desktopTitle) {
+          desktopTitle.textContent = user.email;
+        }
+        if (mobileTitle) {
+          mobileTitle.textContent = user.email;
+        }
+        if (desktopAdminBadge) {
+          desktopAdminBadge.classList.toggle('hidden', !user.isAdmin);
+        }
+        if (desktopProtectedBadge) {
+          desktopProtectedBadge.classList.toggle('hidden', !user.isProtected);
+        }
+        if (desktopProtectedCopy) {
+          desktopProtectedCopy.classList.toggle('hidden', !user.isProtected);
+        }
+        if (mobileAdminBadge) {
+          mobileAdminBadge.classList.toggle('hidden', !user.isAdmin);
+        }
+        if (mobileProtectedBadge) {
+          mobileProtectedBadge.classList.toggle('hidden', !user.isProtected);
+        }
+        if (mobileProtectedCopy) {
+          mobileProtectedCopy.classList.toggle('hidden', !user.isProtected);
+        }
+        applyStatusBadge(desktopStatusBadge, user);
+        applyStatusBadge(mobileStatusBadge, user);
+        if (desktopCreated) {
+          desktopCreated.textContent = `Created ${user.createdLabel}`;
+        }
+        if (mobileCreated) {
+          mobileCreated.textContent = `Created ${user.createdLabel}`;
+        }
+
+        populateActionForms(user);
+      }
+
+      function renderRows() {
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        let visibleRows = 0;
+
+        userRows.forEach((row) => {
+          const isVisible = !query || (row.getAttribute('data-search') || '').includes(query);
+          const isActive = selectedUserId === row.getAttribute('data-user-id');
+
+          row.classList.toggle('hidden', !isVisible);
+          row.classList.toggle('border-slate-900', isActive);
+          row.classList.toggle('bg-white', isActive);
+
+          if (isVisible) {
+            visibleRows += 1;
+          }
+        });
+
+        if (visibleCount) {
+          visibleCount.textContent = String(visibleRows);
+        }
+        if (emptyListMessage) {
+          emptyListMessage.classList.toggle('hidden', visibleRows !== 0 || userRows.length === 0);
+        }
+
+        const visibleActiveRow = userRows.find((row) => row.getAttribute('data-user-id') === selectedUserId && !row.classList.contains('hidden'));
+        if (!visibleActiveRow) {
+          selectedUserId = userRows.find((row) => !row.classList.contains('hidden'))?.getAttribute('data-user-id') || null;
+        }
+
+        syncEditors();
+      }
+
+      function setSelectedUser(userId, { openMobile = false } = {}) {
+        selectedUserId = userId;
+        renderRows();
+        if (openMobile) {
+          openMobileEditor();
+        }
+      }
+
+      function selectedUser() {
+        const activeRow = userRows.find((row) => row.getAttribute('data-user-id') === selectedUserId && !row.classList.contains('hidden'));
+        return activeRow ? getUserData(activeRow) : null;
+      }
+
+      userRows.forEach((row) => {
+        const userId = row.getAttribute('data-user-id') || '';
+        row.querySelectorAll('[data-user-open]').forEach((button) => {
+          button.addEventListener('click', () => {
+            setSelectedUser(userId, { openMobile: !isDesktop() });
+          });
+        });
+      });
+
+      searchInput?.addEventListener('input', renderRows);
+      mobileCloseButton?.addEventListener('click', closeMobileEditor);
+      mobileBackdrop?.addEventListener('click', closeMobileEditor);
+      desktopQuery.addEventListener('change', () => {
+        if (isDesktop()) {
+          closeMobileEditor();
+        }
+      });
+
+      [desktopStatusButton, mobileStatusButton].forEach((button) => {
+        button?.addEventListener('click', (event) => {
+          const user = selectedUser();
+          if (user?.isActive && !window.confirm(`Deactivate ${user.email}?`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      [desktopAdminButton, mobileAdminButton].forEach((button) => {
+        button?.addEventListener('click', (event) => {
+          const user = selectedUser();
+          if (user?.isAdmin && !window.confirm(`Remove admin access for ${user.email}?`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      [desktopDeleteButton, mobileDeleteButton].forEach((button) => {
+        button?.addEventListener('click', (event) => {
+          const user = selectedUser();
+          if (!user || user.isProtected) {
+            return;
+          }
+          if (!window.confirm(`Delete ${user.email}? This removes their account, stores, and items.`)) {
+            event.preventDefault();
+          }
+        });
+      });
+
+      renderRows();
+    }
+
+    if (defaultStoresSection) {
+      const updateActionTemplate = defaultStoresSection.getAttribute('data-update-action-template') || '';
+      const deleteActionTemplate = defaultStoresSection.getAttribute('data-delete-action-template') || '';
+      const defaultStoreRows = Array.from(defaultStoresSection.querySelectorAll('[data-default-store-row]'));
+      const searchInput = defaultStoresSection.querySelector('[data-default-store-search]');
+      const emptyListMessage = defaultStoresSection.querySelector('[data-default-store-empty]');
+      const desktopPanel = defaultStoresSection.querySelector('[data-default-store-desktop-panel]');
+      const desktopEmptyState = defaultStoresSection.querySelector('[data-default-store-empty-state]');
+      const desktopEditor = defaultStoresSection.querySelector('[data-default-store-editor]');
+      const desktopTitle = defaultStoresSection.querySelector('[data-default-store-title]');
+      const desktopForm = defaultStoresSection.querySelector('[data-default-store-detail-form]');
+      const desktopDeleteForm = defaultStoresSection.querySelector('[data-default-store-delete-form]');
+      const desktopDeleteButton = defaultStoresSection.querySelector('[data-default-store-single-delete]');
+      const mobileShell = defaultStoresSection.querySelector('[data-default-store-mobile-shell]');
+      const mobileBackdrop = defaultStoresSection.querySelector('[data-default-store-mobile-backdrop]');
+      const mobileEmptyState = defaultStoresSection.querySelector('[data-default-store-mobile-empty]');
+      const mobileEditor = defaultStoresSection.querySelector('[data-default-store-mobile-editor]');
+      const mobileTitle = defaultStoresSection.querySelector('[data-default-store-mobile-title]');
+      const mobileForm = defaultStoresSection.querySelector('[data-default-store-mobile-form]');
+      const mobileDeleteForm = defaultStoresSection.querySelector('[data-default-store-mobile-delete-form]');
+      const mobileDeleteButton = defaultStoresSection.querySelector('[data-default-store-mobile-delete]');
+      const mobileCloseButton = defaultStoresSection.querySelector('[data-default-store-mobile-close]');
+      const desktopQuery = window.matchMedia('(min-width: 1024px)');
+
+      let selectedStoreId = defaultStoreRows[0]?.getAttribute('data-store-id') || null;
+
+      function getStoreData(row) {
+        return {
+          id: row.getAttribute('data-store-id') || '',
+          name: row.getAttribute('data-name') || '',
+        };
+      }
+
+      function buildAction(template, storeId) {
+        return template.replace('__STORE_ID__', storeId);
+      }
+
+      function isDesktop() {
+        return desktopQuery.matches;
+      }
+
+      function openMobileEditor() {
+        if (!mobileShell || isDesktop()) {
+          return;
+        }
+
+        mobileShell.classList.remove('hidden');
+        mobileShell.classList.remove('pointer-events-none');
+        document.body.classList.add('overflow-hidden');
+      }
+
+      function closeMobileEditor() {
+        if (!mobileShell) {
+          return;
+        }
+
+        mobileShell.classList.add('hidden');
+        mobileShell.classList.add('pointer-events-none');
+        document.body.classList.remove('overflow-hidden');
+      }
+
+      function populateStoreForm(form, store) {
+        if (!form || !store) {
+          return;
+        }
+
+        form.action = buildAction(updateActionTemplate, store.id);
+        const field = form.querySelector('[data-default-store-field="name"]');
+        if (field) {
+          field.value = store.name;
+        }
+      }
+
+      function populateDeleteForm(form, store) {
+        if (!form || !store) {
+          return;
+        }
+
+        form.action = buildAction(deleteActionTemplate, store.id);
+      }
+
+      function syncEditors() {
+        const activeRow = defaultStoreRows.find((row) => row.getAttribute('data-store-id') === selectedStoreId && !row.classList.contains('hidden'));
+        const store = activeRow ? getStoreData(activeRow) : null;
+
+        if (desktopEditor && desktopEmptyState) {
+          desktopEditor.classList.toggle('hidden', !store);
+          desktopEmptyState.classList.toggle('hidden', Boolean(store));
+        }
+        if (mobileEditor && mobileEmptyState) {
+          mobileEditor.classList.toggle('hidden', !store);
+          mobileEmptyState.classList.toggle('hidden', Boolean(store));
+        }
+
+        if (!store) {
+          return;
+        }
+
+        if (desktopTitle) {
+          desktopTitle.textContent = store.name;
+        }
+        if (mobileTitle) {
+          mobileTitle.textContent = store.name;
+        }
+
+        populateStoreForm(desktopForm, store);
+        populateStoreForm(mobileForm, store);
+        populateDeleteForm(desktopDeleteForm, store);
+        populateDeleteForm(mobileDeleteForm, store);
+      }
+
+      function renderRows() {
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        let visibleRows = 0;
+
+        defaultStoreRows.forEach((row) => {
+          const isVisible = !query || (row.getAttribute('data-search') || '').includes(query);
+          const isActive = selectedStoreId === row.getAttribute('data-store-id');
+
+          row.classList.toggle('hidden', !isVisible);
+          row.classList.toggle('border-slate-900', isActive);
+          row.classList.toggle('bg-white', isActive);
+
+          if (isVisible) {
+            visibleRows += 1;
+          }
+        });
+
+        const visibleActiveRow = defaultStoreRows.find((row) => row.getAttribute('data-store-id') === selectedStoreId && !row.classList.contains('hidden'));
+        if (!visibleActiveRow) {
+          selectedStoreId = defaultStoreRows.find((row) => !row.classList.contains('hidden'))?.getAttribute('data-store-id') || null;
+        }
+
+        if (emptyListMessage) {
+          emptyListMessage.classList.toggle('hidden', visibleRows !== 0 || defaultStoreRows.length === 0);
+        }
+
+        syncEditors();
+      }
+
+      function setSelectedStore(storeId, { openMobile = false } = {}) {
+        selectedStoreId = storeId;
+        renderRows();
+        if (openMobile) {
+          openMobileEditor();
+        }
+      }
+
+      defaultStoreRows.forEach((row) => {
+        const storeId = row.getAttribute('data-store-id') || '';
+        row.querySelectorAll('[data-default-store-open]').forEach((button) => {
+          button.addEventListener('click', () => {
+            setSelectedStore(storeId, { openMobile: !isDesktop() });
+          });
+        });
+
+        row.querySelector('[data-default-store-delete]')?.addEventListener('click', () => {
+          const storeName = row.getAttribute('data-name') || 'this store';
+          if (window.confirm(`Delete default store ${storeName}?`)) {
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = buildAction(deleteActionTemplate, storeId);
+            form.classList.add('hidden');
+            form.setAttribute('data-preserve-scroll-form', '');
+            form.setAttribute('data-scroll-target', 'default-stores');
+            defaultStoresSection.appendChild(form);
+            form.requestSubmit();
+          }
+        });
+      });
+
+      searchInput?.addEventListener('input', renderRows);
+
+      desktopDeleteButton?.addEventListener('click', () => {
+        const store = defaultStoreRows.find((row) => row.getAttribute('data-store-id') === selectedStoreId);
+        const storeName = store?.getAttribute('data-name') || 'this store';
+        if (desktopDeleteForm && window.confirm(`Delete default store ${storeName}?`)) {
+          desktopDeleteForm.requestSubmit();
+        }
+      });
+
+      mobileDeleteButton?.addEventListener('click', () => {
+        const store = defaultStoreRows.find((row) => row.getAttribute('data-store-id') === selectedStoreId);
+        const storeName = store?.getAttribute('data-name') || 'this store';
+        if (mobileDeleteForm && window.confirm(`Delete default store ${storeName}?`)) {
+          mobileDeleteForm.requestSubmit();
+        }
+      });
+
+      mobileCloseButton?.addEventListener('click', closeMobileEditor);
+      mobileBackdrop?.addEventListener('click', closeMobileEditor);
+      desktopQuery.addEventListener('change', () => {
+        if (isDesktop()) {
+          closeMobileEditor();
+        }
+      });
+
+      renderRows();
+    }
+
+    if (defaultCategoriesSection) {
+      const updateActionTemplate = defaultCategoriesSection.getAttribute('data-update-action-template') || '';
+      const deleteActionTemplate = defaultCategoriesSection.getAttribute('data-delete-action-template') || '';
+      const defaultCategoryRows = Array.from(defaultCategoriesSection.querySelectorAll('[data-default-category-row]'));
+      const searchInput = defaultCategoriesSection.querySelector('[data-default-category-search]');
+      const emptyListMessage = defaultCategoriesSection.querySelector('[data-default-category-empty]');
+      const desktopEmptyState = defaultCategoriesSection.querySelector('[data-default-category-empty-state]');
+      const desktopEditor = defaultCategoriesSection.querySelector('[data-default-category-editor]');
+      const desktopTitle = defaultCategoriesSection.querySelector('[data-default-category-title]');
+      const desktopForm = defaultCategoriesSection.querySelector('[data-default-category-detail-form]');
+      const desktopDeleteForm = defaultCategoriesSection.querySelector('[data-default-category-delete-form]');
+      const desktopDeleteButton = defaultCategoriesSection.querySelector('[data-default-category-single-delete]');
+      const mobileShell = defaultCategoriesSection.querySelector('[data-default-category-mobile-shell]');
+      const mobileBackdrop = defaultCategoriesSection.querySelector('[data-default-category-mobile-backdrop]');
+      const mobileEmptyState = defaultCategoriesSection.querySelector('[data-default-category-mobile-empty]');
+      const mobileEditor = defaultCategoriesSection.querySelector('[data-default-category-mobile-editor]');
+      const mobileTitle = defaultCategoriesSection.querySelector('[data-default-category-mobile-title]');
+      const mobileForm = defaultCategoriesSection.querySelector('[data-default-category-mobile-form]');
+      const mobileDeleteForm = defaultCategoriesSection.querySelector('[data-default-category-mobile-delete-form]');
+      const mobileDeleteButton = defaultCategoriesSection.querySelector('[data-default-category-mobile-delete]');
+      const mobileCloseButton = defaultCategoriesSection.querySelector('[data-default-category-mobile-close]');
+      const desktopQuery = window.matchMedia('(min-width: 1024px)');
+
+      let selectedCategoryId = defaultCategoryRows[0]?.getAttribute('data-category-id') || null;
+
+      function getCategoryData(row) {
+        return {
+          id: row.getAttribute('data-category-id') || '',
+          name: row.getAttribute('data-name') || '',
+        };
+      }
+
+      function buildAction(template, categoryId) {
+        return template.replace('__CATEGORY_ID__', categoryId);
+      }
+
+      function isDesktop() {
+        return desktopQuery.matches;
+      }
+
+      function openMobileEditor() {
+        if (!mobileShell || isDesktop()) {
+          return;
+        }
+
+        mobileShell.classList.remove('hidden');
+        mobileShell.classList.remove('pointer-events-none');
+        document.body.classList.add('overflow-hidden');
+      }
+
+      function closeMobileEditor() {
+        if (!mobileShell) {
+          return;
+        }
+
+        mobileShell.classList.add('hidden');
+        mobileShell.classList.add('pointer-events-none');
+        document.body.classList.remove('overflow-hidden');
+      }
+
+      function populateCategoryForm(form, category) {
+        if (!form || !category) {
+          return;
+        }
+
+        form.action = buildAction(updateActionTemplate, category.id);
+        const field = form.querySelector('[data-default-category-field="name"]');
+        if (field) {
+          field.value = category.name;
+        }
+      }
+
+      function populateDeleteForm(form, category) {
+        if (!form || !category) {
+          return;
+        }
+
+        form.action = buildAction(deleteActionTemplate, category.id);
+      }
+
+      function syncEditors() {
+        const activeRow = defaultCategoryRows.find((row) => row.getAttribute('data-category-id') === selectedCategoryId && !row.classList.contains('hidden'));
+        const category = activeRow ? getCategoryData(activeRow) : null;
+
+        if (desktopEditor && desktopEmptyState) {
+          desktopEditor.classList.toggle('hidden', !category);
+          desktopEmptyState.classList.toggle('hidden', Boolean(category));
+        }
+        if (mobileEditor && mobileEmptyState) {
+          mobileEditor.classList.toggle('hidden', !category);
+          mobileEmptyState.classList.toggle('hidden', Boolean(category));
+        }
+
+        if (!category) {
+          return;
+        }
+
+        if (desktopTitle) {
+          desktopTitle.textContent = category.name;
+        }
+        if (mobileTitle) {
+          mobileTitle.textContent = category.name;
+        }
+
+        populateCategoryForm(desktopForm, category);
+        populateCategoryForm(mobileForm, category);
+        populateDeleteForm(desktopDeleteForm, category);
+        populateDeleteForm(mobileDeleteForm, category);
+      }
+
+      function renderRows() {
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        let visibleRows = 0;
+
+        defaultCategoryRows.forEach((row) => {
+          const isVisible = !query || (row.getAttribute('data-search') || '').includes(query);
+          const isActive = selectedCategoryId === row.getAttribute('data-category-id');
+
+          row.classList.toggle('hidden', !isVisible);
+          row.classList.toggle('border-slate-900', isActive);
+          row.classList.toggle('bg-white', isActive);
+
+          if (isVisible) {
+            visibleRows += 1;
+          }
+        });
+
+        const visibleActiveRow = defaultCategoryRows.find((row) => row.getAttribute('data-category-id') === selectedCategoryId && !row.classList.contains('hidden'));
+        if (!visibleActiveRow) {
+          selectedCategoryId = defaultCategoryRows.find((row) => !row.classList.contains('hidden'))?.getAttribute('data-category-id') || null;
+        }
+
+        if (emptyListMessage) {
+          emptyListMessage.classList.toggle('hidden', visibleRows !== 0 || defaultCategoryRows.length === 0);
+        }
+
+        syncEditors();
+      }
+
+      function setSelectedCategory(categoryId, { openMobile = false } = {}) {
+        selectedCategoryId = categoryId;
+        renderRows();
+        if (openMobile) {
+          openMobileEditor();
+        }
+      }
+
+      defaultCategoryRows.forEach((row) => {
+        const categoryId = row.getAttribute('data-category-id') || '';
+        row.querySelectorAll('[data-default-category-open]').forEach((button) => {
+          button.addEventListener('click', () => {
+            setSelectedCategory(categoryId, { openMobile: !isDesktop() });
+          });
+        });
+
+        row.querySelector('[data-default-category-delete]')?.addEventListener('click', () => {
+          const categoryName = row.getAttribute('data-name') || 'this category';
+          if (window.confirm(`Delete default category ${categoryName}?`)) {
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = buildAction(deleteActionTemplate, categoryId);
+            form.classList.add('hidden');
+            form.setAttribute('data-preserve-scroll-form', '');
+            form.setAttribute('data-scroll-target', 'default-categories');
+            defaultCategoriesSection.appendChild(form);
+            form.requestSubmit();
+          }
+        });
+      });
+
+      searchInput?.addEventListener('input', renderRows);
+
+      desktopDeleteButton?.addEventListener('click', () => {
+        const category = defaultCategoryRows.find((row) => row.getAttribute('data-category-id') === selectedCategoryId);
+        const categoryName = category?.getAttribute('data-name') || 'this category';
+        if (desktopDeleteForm && window.confirm(`Delete default category ${categoryName}?`)) {
+          desktopDeleteForm.requestSubmit();
+        }
+      });
+
+      mobileDeleteButton?.addEventListener('click', () => {
+        const category = defaultCategoryRows.find((row) => row.getAttribute('data-category-id') === selectedCategoryId);
+        const categoryName = category?.getAttribute('data-name') || 'this category';
+        if (mobileDeleteForm && window.confirm(`Delete default category ${categoryName}?`)) {
+          mobileDeleteForm.requestSubmit();
+        }
+      });
+
+      mobileCloseButton?.addEventListener('click', closeMobileEditor);
+      mobileBackdrop?.addEventListener('click', closeMobileEditor);
+      desktopQuery.addEventListener('change', () => {
+        if (isDesktop()) {
+          closeMobileEditor();
+        }
+      });
+
+      renderRows();
+    }
+
+    if (defaultItemsSection) {
+      const updateActionTemplate = defaultItemsSection.getAttribute('data-update-action-template') || '';
+      const deleteActionTemplate = defaultItemsSection.getAttribute('data-delete-action-template') || '';
+      const defaultItemRows = Array.from(defaultItemsSection.querySelectorAll('[data-default-item-row]'));
+      const searchInput = defaultItemsSection.querySelector('[data-default-item-search]');
+      const categoryFilter = defaultItemsSection.querySelector('[data-default-item-filter]');
+      const selectionToggleButton = defaultItemsSection.querySelector('[data-default-item-selection-toggle]');
+      const selectionDoneButton = defaultItemsSection.querySelector('[data-default-item-selection-done]');
+      const bulkForm = defaultItemsSection.querySelector('[data-default-item-bulk-form]');
+      const bulkSubmitButton = defaultItemsSection.querySelector('[data-default-item-bulk-submit]');
+      const selectVisibleButton = defaultItemsSection.querySelector('[data-default-item-select-visible]');
+      const clearSelectionButton = defaultItemsSection.querySelector('[data-default-item-clear-selection]');
+      const visibleCount = defaultItemsSection.querySelector('[data-default-item-visible-count]');
+      const selectedCountElements = defaultItemsSection.querySelectorAll('[data-default-item-selected-count]');
+      const emptyListMessage = defaultItemsSection.querySelector('[data-default-item-empty]');
+      const desktopPanel = defaultItemsSection.querySelector('[data-default-item-desktop-panel]');
+      const desktopEmptyState = defaultItemsSection.querySelector('[data-default-item-empty-state]');
+      const desktopEditor = defaultItemsSection.querySelector('[data-default-item-editor]');
+      const desktopTitle = defaultItemsSection.querySelector('[data-default-item-title]');
+      const desktopForm = defaultItemsSection.querySelector('[data-default-item-detail-form]');
+      const desktopDeleteForm = defaultItemsSection.querySelector('[data-default-item-delete-form]');
+      const desktopDeleteButton = defaultItemsSection.querySelector('[data-default-item-single-delete]');
+      const mobileShell = defaultItemsSection.querySelector('[data-default-item-mobile-shell]');
+      const mobileBackdrop = defaultItemsSection.querySelector('[data-default-item-mobile-backdrop]');
+      const mobileEmptyState = defaultItemsSection.querySelector('[data-default-item-mobile-empty]');
+      const mobileEditor = defaultItemsSection.querySelector('[data-default-item-mobile-editor]');
+      const mobileTitle = defaultItemsSection.querySelector('[data-default-item-mobile-title]');
+      const mobileForm = defaultItemsSection.querySelector('[data-default-item-mobile-form]');
+      const mobileDeleteForm = defaultItemsSection.querySelector('[data-default-item-mobile-delete-form]');
+      const mobileDeleteButton = defaultItemsSection.querySelector('[data-default-item-mobile-delete]');
+      const mobileCloseButton = defaultItemsSection.querySelector('[data-default-item-mobile-close]');
+      const desktopQuery = window.matchMedia('(min-width: 1024px)');
+
+      let selectedItemId = defaultItemRows[0]?.getAttribute('data-item-id') || null;
+      let selectionMode = false;
+      const selectedIds = new Set();
+
+      function getItemData(row) {
+        return {
+          id: row.getAttribute('data-item-id') || '',
+          name: row.getAttribute('data-name') || '',
+          quantity: row.getAttribute('data-quantity') || '1',
+          unit: row.getAttribute('data-unit') || '',
+          category: row.getAttribute('data-category') || '',
+          sortOrder: row.getAttribute('data-sort-order') || '0',
+          storeTemplateId: row.getAttribute('data-store-template-id') || '',
+        };
+      }
+
+      function buildAction(template, itemId) {
+        return template.replace('__ITEM_ID__', itemId);
+      }
+
+      function isDesktop() {
+        return desktopQuery.matches;
+      }
+
+      function openMobileEditor() {
+        if (!mobileShell || isDesktop()) {
+          return;
+        }
+
+        mobileShell.classList.remove('hidden');
+        mobileShell.classList.remove('pointer-events-none');
+        document.body.classList.add('overflow-hidden');
+      }
+
+      function closeMobileEditor() {
+        if (!mobileShell) {
+          return;
+        }
+
+        mobileShell.classList.add('hidden');
+        mobileShell.classList.add('pointer-events-none');
+        document.body.classList.remove('overflow-hidden');
+      }
+
+      function populateFormFields(form, item) {
+        if (!form || !item) {
+          return;
+        }
+
+        form.action = buildAction(updateActionTemplate, item.id);
+        const fieldMap = {
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+          category: item.category,
+          sort_order: item.sortOrder,
+          store_template_id: item.storeTemplateId,
+        };
+
+        Object.entries(fieldMap).forEach(([fieldName, value]) => {
+          const field = form.querySelector(`[data-default-item-field="${fieldName}"]`);
+          if (!field) {
+            return;
+          }
+
+          field.value = value || '';
+        });
+      }
+
+      function populateDeleteForm(form, item) {
+        if (!form || !item) {
+          return;
+        }
+
+        form.action = buildAction(deleteActionTemplate, item.id);
+      }
+
+      function syncEditors() {
+        const activeRow = defaultItemRows.find((row) => row.getAttribute('data-item-id') === selectedItemId && !row.classList.contains('hidden'));
+        const item = activeRow ? getItemData(activeRow) : null;
+
+        if (desktopEditor && desktopEmptyState) {
+          desktopEditor.classList.toggle('hidden', !item);
+          desktopEmptyState.classList.toggle('hidden', Boolean(item));
+        }
+        if (mobileEditor && mobileEmptyState) {
+          mobileEditor.classList.toggle('hidden', !item);
+          mobileEmptyState.classList.toggle('hidden', Boolean(item));
+        }
+
+        if (!item) {
+          return;
+        }
+
+        if (desktopTitle) {
+          desktopTitle.textContent = item.name;
+        }
+        if (mobileTitle) {
+          mobileTitle.textContent = item.name;
+        }
+
+        populateFormFields(desktopForm, item);
+        populateFormFields(mobileForm, item);
+        populateDeleteForm(desktopDeleteForm, item);
+        populateDeleteForm(mobileDeleteForm, item);
+      }
+
+      function syncBulkForm() {
+        if (!bulkForm) {
+          return;
+        }
+
+        bulkForm.querySelectorAll('input[name="item_ids"]').forEach((input) => input.remove());
+        selectedIds.forEach((itemId) => {
+          const input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'item_ids';
+          input.value = itemId;
+          bulkForm.appendChild(input);
+        });
+
+        selectedCountElements.forEach((element) => {
+          element.textContent = String(selectedIds.size);
+        });
+
+        if (bulkSubmitButton) {
+          bulkSubmitButton.disabled = selectedIds.size === 0;
+        }
+      }
+
+      function renderRows() {
+        const query = (searchInput?.value || '').trim().toLowerCase();
+        const category = categoryFilter?.value || '';
+        let visibleRows = 0;
+
+        defaultItemRows.forEach((row) => {
+          const matchesSearch = !query || (row.getAttribute('data-search') || '').includes(query);
+          const matchesCategory = !category || (row.getAttribute('data-category-filter') || '') === category;
+          const isVisible = matchesSearch && matchesCategory;
+          const itemId = row.getAttribute('data-item-id') || '';
+          const isSelected = selectedIds.has(itemId);
+          const isActive = !selectionMode && selectedItemId === itemId;
+          const selectWrap = row.querySelector('[data-default-item-select-wrap]');
+          const selectInput = row.querySelector('[data-default-item-select-input]');
+          const selectCheckmark = row.querySelector('[data-default-item-checkmark]');
+          const selectButton = row.querySelector('[data-default-item-select-button]');
+
+          row.classList.toggle('hidden', !isVisible);
+          row.classList.toggle('border-slate-900', isActive);
+          row.classList.toggle('bg-white', isActive);
+          row.classList.toggle('border-rose-300', isSelected);
+          row.classList.toggle('bg-rose-50', isSelected);
+
+          if (selectWrap) {
+            selectWrap.classList.toggle('hidden', !selectionMode);
+          }
+          if (selectButton) {
+            selectButton.classList.toggle('hidden', !selectionMode);
+          }
+          if (selectInput) {
+            selectInput.checked = isSelected;
+          }
+          if (selectCheckmark) {
+            selectCheckmark.textContent = isSelected ? '✓' : '+';
+            selectCheckmark.classList.toggle('bg-rose-100', isSelected);
+            selectCheckmark.classList.toggle('border-rose-300', isSelected);
+          }
+
+          if (isVisible) {
+            visibleRows += 1;
+          }
+        });
+
+        if (visibleCount) {
+          visibleCount.textContent = String(visibleRows);
+        }
+        if (emptyListMessage) {
+          emptyListMessage.classList.toggle('hidden', visibleRows !== 0 || defaultItemRows.length === 0);
+        }
+
+        const visibleActiveRow = defaultItemRows.find((row) => row.getAttribute('data-item-id') === selectedItemId && !row.classList.contains('hidden'));
+        if (!visibleActiveRow) {
+          selectedItemId = defaultItemRows.find((row) => !row.classList.contains('hidden'))?.getAttribute('data-item-id') || null;
+        }
+
+        if (selectionToggleButton) {
+          selectionToggleButton.textContent = selectionMode ? 'Exit Selection' : 'Select Items';
+        }
+        if (bulkForm) {
+          bulkForm.classList.toggle('hidden', !selectionMode);
+        }
+
+        syncBulkForm();
+        syncEditors();
+      }
+
+      function setSelectedItem(itemId, { openMobile = false } = {}) {
+        selectedItemId = itemId;
+        renderRows();
+        if (openMobile) {
+          openMobileEditor();
+        }
+      }
+
+      function toggleSelectionMode(forceValue) {
+        selectionMode = typeof forceValue === 'boolean' ? forceValue : !selectionMode;
+        if (!selectionMode) {
+          selectedIds.clear();
+        }
+        renderRows();
+      }
+
+      defaultItemRows.forEach((row) => {
+        const itemId = row.getAttribute('data-item-id') || '';
+        row.querySelectorAll('[data-default-item-open]').forEach((button) => {
+          button.addEventListener('click', () => {
+            setSelectedItem(itemId, { openMobile: !isDesktop() });
+          });
+        });
+
+        row.querySelector('[data-default-item-select-input]')?.addEventListener('change', (event) => {
+          if (event.target.checked) {
+            selectedIds.add(itemId);
+          } else {
+            selectedIds.delete(itemId);
+          }
+          renderRows();
+        });
+
+        row.querySelector('[data-default-item-select-button]')?.addEventListener('click', () => {
+          if (selectedIds.has(itemId)) {
+            selectedIds.delete(itemId);
+          } else {
+            selectedIds.add(itemId);
+          }
+          renderRows();
+        });
+      });
+
+      searchInput?.addEventListener('input', renderRows);
+      categoryFilter?.addEventListener('change', renderRows);
+      selectionToggleButton?.addEventListener('click', () => toggleSelectionMode());
+      selectionDoneButton?.addEventListener('click', () => toggleSelectionMode(false));
+      clearSelectionButton?.addEventListener('click', () => {
+        selectedIds.clear();
+        renderRows();
+      });
+      selectVisibleButton?.addEventListener('click', () => {
+        defaultItemRows
+          .filter((row) => !row.classList.contains('hidden'))
+          .forEach((row) => selectedIds.add(row.getAttribute('data-item-id') || ''));
+        renderRows();
+      });
+
+      desktopDeleteButton?.addEventListener('click', () => {
+        const item = defaultItemRows.find((row) => row.getAttribute('data-item-id') === selectedItemId);
+        const itemName = item?.getAttribute('data-name') || 'this item';
+        if (desktopDeleteForm && window.confirm(`Delete ${itemName}?`)) {
+          desktopDeleteForm.requestSubmit();
+        }
+      });
+
+      mobileDeleteButton?.addEventListener('click', () => {
+        const item = defaultItemRows.find((row) => row.getAttribute('data-item-id') === selectedItemId);
+        const itemName = item?.getAttribute('data-name') || 'this item';
+        if (mobileDeleteForm && window.confirm(`Delete ${itemName}?`)) {
+          mobileDeleteForm.requestSubmit();
+        }
+      });
+
+      bulkForm?.addEventListener('submit', (event) => {
+        if (selectedIds.size === 0) {
+          event.preventDefault();
+          return;
+        }
+
+        if (!window.confirm(`Delete ${selectedIds.size} selected default item${selectedIds.size === 1 ? '' : 's'}?`)) {
+          event.preventDefault();
+        }
+      });
+
+      mobileCloseButton?.addEventListener('click', closeMobileEditor);
+      mobileBackdrop?.addEventListener('click', closeMobileEditor);
+      desktopQuery.addEventListener('change', () => {
+        if (isDesktop()) {
+          closeMobileEditor();
+        }
+      });
+
+      renderRows();
+    }
   </script>
 </body>
 

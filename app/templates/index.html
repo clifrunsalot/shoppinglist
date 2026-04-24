@@ -220,24 +220,23 @@
     <!-- Filter / sort bar -->
     <div class="sticky top-0 z-20 -mx-3 px-3 pt-2 pb-2 bg-white/80 backdrop-blur-sm border-b border-white/60">
       <div class="flex items-center gap-2 flex-wrap">
-        <button @click="toggleSettings()" class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+      <button @click="toggleSettings()" class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors"
         :aria-label="showSettings ? 'Close settings' : 'Open settings'">
           <svg class="w-5 h-5 overflow-visible" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12a3 3 0 106 0 3 3 0 00-6 0z" />
         </svg>
       </button>
-      <button @click="setActiveFilter('all')" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+      <button data-testid="category-filter-all" @click="setActiveFilter('all')" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
         :class="activeFilter === 'all' ? 'theme-filter-active' : ''">All</button>
-      <button @click="setActiveFilter('Food')" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-        :class="activeFilter === 'Food' ? 'theme-filter-active' : ''">Food</button>
-      <button @click="setActiveFilter('Non-Food')"
-        class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
-        :class="activeFilter === 'Non-Food' ? 'theme-filter-active' : ''">Non-Food</button>
-      <button @click="setActiveFilter('pending')"
+      <template x-for="category in categoryFilters" :key="category.id">
+        <button type="button" :data-testid="`category-filter-${category.id}`" @click="setActiveFilter(category.name)" class="theme-filter text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+          :class="activeFilter === category.name ? 'theme-filter-active' : ''" x-text="category.name"></button>
+      </template>
+      <button data-testid="category-filter-pending" @click="setActiveFilter('pending')"
         class="text-xs px-3 py-1 rounded-full border font-medium transition-colors"
         :class="activeFilter === 'pending' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-400'">Pending</button>
-      <button @click="setActiveFilter('done')" class="text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+      <button data-testid="category-filter-done" @click="setActiveFilter('done')" class="text-xs px-3 py-1 rounded-full border font-medium transition-colors"
         :class="activeFilter === 'done' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'">Done</button>
       </div>
     </div>
@@ -326,6 +325,23 @@
                   <span class="text-xs font-medium text-gray-700" x-text="option.label"></span>
                 </button>
               </template>
+            </div>
+          </div>
+
+          <div class="border-t pt-6">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-700">Default Grocery Items</label>
+              <p class="mt-1 text-xs leading-5 text-gray-500">Import the current default grocery list into your account. If an item already exists with the same name, the default values overwrite it.</p>
+            </div>
+            <div class="space-y-3">
+              <template x-if="importDefaultsMessage.text">
+                <div data-testid="settings-import-default-items-message" class="rounded-2xl border px-3 py-2 text-sm"
+                  :class="importDefaultsMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
+                  x-text="importDefaultsMessage.text"></div>
+              </template>
+              <button data-testid="settings-import-default-items" @click="importDefaultItems()" :disabled="importDefaultsSaving"
+                class="theme-primary w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-50"
+                x-text="importDefaultsSaving ? 'Importing Default Items...' : 'Import Default Items'"></button>
             </div>
           </div>
 
@@ -541,6 +557,8 @@
         passwordForm: { current_password: '', new_password: '', confirmation_password: '' },
         passwordMessage: { type: '', text: '' },
         passwordSaving: false,
+        importDefaultsMessage: { type: '', text: '' },
+        importDefaultsSaving: false,
         itemSaveDebounceMs: 400,
         pendingItemChanges: {},
         pendingItemTimers: {},
@@ -551,11 +569,27 @@
         storeRefreshTimer: null,
         itemSelectionPromise: Promise.resolve(),
 
+        get categoryFilters() {
+          const itemCategories = new Set(this.items.map(item => item.category).filter(Boolean));
+          return this.categories.filter(category => itemCategories.has(category.name));
+        },
+
+        syncActiveFilter() {
+          if (['all', 'pending', 'done'].includes(this.activeFilter)) {
+            return;
+          }
+
+          if (!this.categoryFilters.some(category => category.name === this.activeFilter)) {
+            this.activeFilter = 'all';
+          }
+        },
+
         filterByActiveButton(list) {
-          if (this.activeFilter === 'Food') return list.filter(i => i.category === 'Food');
-          if (this.activeFilter === 'Non-Food') return list.filter(i => i.category === 'Non-Food');
+          this.syncActiveFilter();
+
           if (this.activeFilter === 'pending') return list.filter(i => !i.checked);
           if (this.activeFilter === 'done') return list.filter(i => i.checked);
+          if (this.activeFilter !== 'all') return list.filter(i => i.category === this.activeFilter);
           return list;
         },
 
@@ -701,6 +735,10 @@
           this.passwordMessage = { type: '', text: '' };
         },
 
+        clearImportDefaultsMessage() {
+          this.importDefaultsMessage = { type: '', text: '' };
+        },
+
         resetPasswordForm() {
           this.passwordForm = { current_password: '', new_password: '', confirmation_password: '' };
         },
@@ -815,6 +853,7 @@
           }
 
           this.items.splice(index, 1, updatedItem);
+          this.syncActiveFilter();
           if (this.selectedItem && this.selectedItem.id === updatedItem.id) {
             this.setSelectedItemFromState(updatedItem);
           }
@@ -1193,6 +1232,7 @@
           }
 
           const [removedItem] = this.items.splice(index, 1);
+          this.syncActiveFilter();
           if (this.selectedItem && this.selectedItem.id === itemId) {
             this.selectedItem = null;
             if (this.panelMode === 'detail') {
@@ -1209,6 +1249,7 @@
           }
 
           this.items.splice(snapshot.index, 0, snapshot.item);
+          this.syncActiveFilter();
         },
 
         normalizeItemFieldValue(field, value) {
@@ -1264,6 +1305,38 @@
           }
         },
 
+        async importDefaultItems() {
+          this.importDefaultsSaving = true;
+          this.clearImportDefaultsMessage();
+
+          try {
+            const payload = await this.requestJson('/api/account/import-default-items', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }, 'Unable to import default items.');
+
+            await Promise.all([this.fetchStores(), this.fetchCategories(), this.fetchItems()]);
+
+            const summary = [];
+            if (payload.created_count) {
+              summary.push(`${payload.created_count} added`);
+            }
+            if (payload.overwritten_count) {
+              summary.push(`${payload.overwritten_count} overwritten`);
+            }
+
+            this.importDefaultsMessage = {
+              type: 'success',
+              text: summary.length ? `Default items imported: ${summary.join(', ')}.` : 'Default items are already up to date.',
+            };
+          } catch (err) {
+            this.importDefaultsMessage = { type: 'error', text: err.message };
+          } finally {
+            this.importDefaultsSaving = false;
+          }
+        },
+
         syncThemeColor() {
           const colors = {
             meadow: '#16a34a',
@@ -1285,6 +1358,7 @@
 
         async fetchItems() {
           this.items = await this.requestJson('/api/items', {}, 'Unable to load items.');
+          this.syncActiveFilter();
         },
 
         async fetchStores() {
@@ -1293,6 +1367,7 @@
 
         async fetchCategories() {
           this.categories = await this.requestJson('/api/categories', {}, 'Unable to load categories.');
+          this.syncActiveFilter();
         },
 
         async refreshStoresSilently() {

@@ -65,6 +65,14 @@ def admin_default_categories_anchor():
     return f"{url_for('admin_dashboard')}#default-categories"
 
 
+def admin_default_items_anchor():
+    return f"{url_for('admin_dashboard')}#default-items"
+
+
+def admin_users_anchor():
+    return f"{url_for('admin_dashboard')}#users"
+
+
 def wants_json_response():
     return request.path.startswith('/api/')
 
@@ -107,6 +115,9 @@ def normalize_email(value):
 
 def parse_quantity(value):
     if value is None:
+        return 1, None
+
+    if isinstance(value, str) and not value.strip():
         return 1, None
 
     try:
@@ -239,6 +250,13 @@ def create_app(config_overrides=None):
             setting.value = 'meadow'
             db.session.commit()
         return setting.value
+
+    def get_protected_admin_user():
+        return User.query.filter_by(is_admin=True).order_by(User.created_at.asc(), User.id.asc()).first()
+
+    def is_protected_admin_user(user):
+        protected_admin = get_protected_admin_user()
+        return protected_admin is not None and user is not None and protected_admin.id == user.id
 
     def get_user_theme(user):
         if user.theme_preference in THEME_OPTIONS:
@@ -549,6 +567,71 @@ def create_app(config_overrides=None):
 
         return created_items
 
+    def import_default_items_for_user(user):
+        created_stores = ensure_user_has_default_stores(user)
+        changed = deduplicate_user_items_for_user(user.id)
+        templates = DefaultItemTemplate.query.order_by(
+            db.func.lower(DefaultItemTemplate.name).asc(),
+            DefaultItemTemplate.id.asc(),
+        ).all()
+
+        created_items = []
+        overwritten_items = []
+
+        for index, template in enumerate(templates, start=1):
+            normalized_template_name = (template.name or '').strip().lower()
+            imported_sort_order = index * 10
+            store_id = None
+            if template.store_template_id is not None:
+                store = Store.query.filter_by(user_id=user.id, template_store_id=template.store_template_id).first()
+                if store is not None:
+                    store_id = store.id
+
+            item = Item.query.filter_by(user_id=user.id, template_item_id=template.id).first()
+            if item is None:
+                item = Item.query.filter(
+                    Item.user_id == user.id,
+                    db.func.lower(db.func.trim(Item.name)) == normalized_template_name,
+                ).first()
+
+            if item is None:
+                item = Item(
+                    name=template.name,
+                    quantity=template.quantity,
+                    unit=template.unit,
+                    category=template.category,
+                    sort_order=imported_sort_order,
+                    price=Decimal('0.00'),
+                    checked=False,
+                    user_id=user.id,
+                    store_id=store_id,
+                    template_item_id=template.id,
+                )
+                db.session.add(item)
+                db.session.flush()
+                created_items.append(item)
+                continue
+
+            item.name = template.name
+            item.quantity = template.quantity
+            item.unit = template.unit
+            item.category = template.category
+            item.sort_order = imported_sort_order
+            item.price = Decimal('0.00')
+            item.checked = False
+            item.store_id = store_id
+            item.template_item_id = template.id
+            overwritten_items.append(item)
+
+        if created_items or overwritten_items or changed:
+            db.session.commit()
+
+        return {
+            'created_stores': created_stores,
+            'created_items': created_items,
+            'overwritten_items': overwritten_items,
+        }
+
     def stores_are_admin_managed_error():
         return error_response('stores are managed by an administrator', 403)
 
@@ -797,13 +880,15 @@ def create_app(config_overrides=None):
     def admin_dashboard():
         if deduplicate_default_item_templates():
             db.session.commit()
+        protected_admin = get_protected_admin_user()
         return render_template(
             'admin.html',
             users=User.query.order_by(User.email.asc()).all(),
             pending_users=User.query.filter_by(is_approved=False).order_by(User.created_at.desc()).all(),
             default_stores=DefaultStoreTemplate.query.order_by(*default_store_ordering()).all(),
             default_categories=DefaultCategoryTemplate.query.order_by(*default_category_ordering()).all(),
-            default_items=DefaultItemTemplate.query.order_by(DefaultItemTemplate.sort_order.asc(), DefaultItemTemplate.name.asc()).all(),
+            default_items=DefaultItemTemplate.query.order_by(db.func.lower(DefaultItemTemplate.name).asc(), DefaultItemTemplate.id.asc()).all(),
+            protected_admin_user_id=protected_admin.id if protected_admin is not None else None,
             current_default_theme=get_default_theme(),
             theme_options=THEME_OPTIONS,
         )
@@ -1019,31 +1104,31 @@ def create_app(config_overrides=None):
         name, error = normalize_text_field(request.form.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             flash('An item name is required.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
         if find_default_item_template_by_name(name) is not None:
             flash('That default item already exists.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         quantity, quantity_error = parse_quantity(request.form.get('quantity'))
         if quantity_error:
             flash(f"{error_message(quantity_error).capitalize()}.", 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         unit, unit_error = normalize_text_field(request.form.get('unit'), 'unit', 30)
         if unit_error:
             flash('Unit is too long.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         category, category_error = parse_category_name(request.form.get('category'))
         if category_error:
             flash('Choose a valid default category.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         try:
             sort_order = parse_sort_order(request.form.get('sort_order'), default=0)
         except ValueError as exc:
             flash(str(exc), 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         store_template_id = request.form.get('store_template_id') or None
         if store_template_id:
@@ -1051,10 +1136,10 @@ def create_app(config_overrides=None):
                 store_template_id = int(store_template_id)
             except (TypeError, ValueError):
                 flash('Choose a valid default store.', 'error')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(admin_default_items_anchor())
             if db.session.get(DefaultStoreTemplate, store_template_id) is None:
                 flash('Choose a valid default store.', 'error')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(admin_default_items_anchor())
 
         item = DefaultItemTemplate(name=name, quantity=quantity, unit=unit, category=category, sort_order=sort_order, store_template_id=store_template_id)
         db.session.add(item)
@@ -1068,7 +1153,7 @@ def create_app(config_overrides=None):
         record_audit('default_item.created', 'default_item', f'Created default item {name}.', actor=current_user, target_id=item.id, details={'sort_order': sort_order, 'store_template_id': store_template_id, 'copied_user_ids': copied_user_ids})
         db.session.commit()
         flash('Default item added.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_items_anchor())
 
     @app.route('/admin/default-items/<int:item_id>/update', methods=['POST'])
     @login_required
@@ -1077,36 +1162,36 @@ def create_app(config_overrides=None):
         item = db.session.get(DefaultItemTemplate, item_id)
         if item is None:
             flash('Default item not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         name, error = normalize_text_field(request.form.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             flash('An item name is required.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
         if find_default_item_template_by_name(name, exclude_item_id=item.id) is not None:
             flash('That default item name is already in use.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         quantity, quantity_error = parse_quantity(request.form.get('quantity'))
         if quantity_error:
             flash(f"{error_message(quantity_error).capitalize()}.", 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         unit, unit_error = normalize_text_field(request.form.get('unit'), 'unit', 30)
         if unit_error:
             flash('Unit is too long.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         category, category_error = parse_category_name(request.form.get('category'))
         if category_error:
             flash('Choose a valid default category.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         try:
             sort_order = parse_sort_order(request.form.get('sort_order'), default=item.sort_order)
         except ValueError as exc:
             flash(str(exc), 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
         store_template_id = request.form.get('store_template_id') or None
         if store_template_id:
@@ -1114,10 +1199,10 @@ def create_app(config_overrides=None):
                 store_template_id = int(store_template_id)
             except (TypeError, ValueError):
                 flash('Choose a valid default store.', 'error')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(admin_default_items_anchor())
             if db.session.get(DefaultStoreTemplate, store_template_id) is None:
                 flash('Choose a valid default store.', 'error')
-                return redirect(url_for('admin_dashboard'))
+                return redirect(admin_default_items_anchor())
 
         previous = {'name': item.name, 'quantity': item.quantity, 'unit': item.unit, 'category': item.category, 'sort_order': item.sort_order, 'store_template_id': item.store_template_id}
         item.name = name
@@ -1129,7 +1214,7 @@ def create_app(config_overrides=None):
         record_audit('default_item.updated', 'default_item', f'Updated default item {name}.', actor=current_user, target_id=item.id, details={'before': previous, 'after': {'name': name, 'quantity': quantity, 'unit': unit, 'category': category, 'sort_order': sort_order, 'store_template_id': store_template_id}})
         db.session.commit()
         flash('Default item updated.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_items_anchor())
 
     @app.route('/admin/default-items/<int:item_id>/delete', methods=['POST'])
     @login_required
@@ -1138,13 +1223,72 @@ def create_app(config_overrides=None):
         item = db.session.get(DefaultItemTemplate, item_id)
         if item is None:
             flash('Default item not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_default_items_anchor())
 
-        record_audit('default_item.deleted', 'default_item', f'Deleted default item {item.name}.', actor=current_user, target_id=item.id)
+        affected_item_ids = [linked_item_id for (linked_item_id,) in db.session.query(Item.id).filter_by(template_item_id=item.id).all()]
+        if affected_item_ids:
+            Item.query.filter_by(template_item_id=item.id).update({'template_item_id': None}, synchronize_session=False)
+
+        record_audit(
+            'default_item.deleted',
+            'default_item',
+            f'Deleted default item {item.name}.',
+            actor=current_user,
+            target_id=item.id,
+            details={'affected_item_ids': affected_item_ids},
+        )
         db.session.delete(item)
         db.session.commit()
         flash('Default item deleted.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_default_items_anchor())
+
+    @app.route('/admin/default-items/bulk-delete', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_bulk_delete_default_items():
+        raw_item_ids = request.form.getlist('item_ids')
+        item_ids = []
+        for raw_item_id in raw_item_ids:
+            try:
+                item_id = int(raw_item_id)
+            except (TypeError, ValueError):
+                continue
+            if item_id not in item_ids:
+                item_ids.append(item_id)
+
+        if not item_ids:
+            flash('Select at least one default item to delete.', 'error')
+            return redirect(admin_default_items_anchor())
+
+        items = (
+            DefaultItemTemplate.query
+            .filter(DefaultItemTemplate.id.in_(item_ids))
+            .order_by(DefaultItemTemplate.sort_order.asc(), DefaultItemTemplate.name.asc())
+            .all()
+        )
+        if not items:
+            flash('Default items not found.', 'error')
+            return redirect(admin_default_items_anchor())
+
+        deleted_item_ids = [item.id for item in items]
+        deleted_item_names = [item.name for item in items]
+        affected_user_item_ids = [item_id for (item_id,) in db.session.query(Item.id).filter(Item.template_item_id.in_(deleted_item_ids)).all()]
+        if affected_user_item_ids:
+            Item.query.filter(Item.template_item_id.in_(deleted_item_ids)).update({'template_item_id': None}, synchronize_session=False)
+
+        for item in items:
+            db.session.delete(item)
+
+        record_audit(
+            'default_item.bulk_deleted',
+            'default_item',
+            f'Deleted {len(items)} default items.',
+            actor=current_user,
+            details={'item_ids': deleted_item_ids, 'item_names': deleted_item_names, 'affected_item_ids': affected_user_item_ids},
+        )
+        db.session.commit()
+        flash(f'Deleted {len(items)} default item{"s" if len(items) != 1 else ""}.', 'success')
+        return redirect(admin_default_items_anchor())
 
     @app.route('/admin/users/<int:user_id>/approve', methods=['POST'])
     @login_required
@@ -1178,13 +1322,16 @@ def create_app(config_overrides=None):
             return redirect(url_for('admin_dashboard'))
         if user.id == current_user.id:
             flash('You cannot deactivate your own account.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_users_anchor())
+        if is_protected_admin_user(user):
+            flash('The protected admin account must remain active.', 'error')
+            return redirect(admin_users_anchor())
 
         user.is_active = False
         record_audit('user.deactivated', 'user', f'Deactivated {user.email}.', actor=current_user, target_id=user.id)
         db.session.commit()
         flash('User deactivated.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_users_anchor())
 
     @app.route('/admin/users/<int:user_id>/activate', methods=['POST'])
     @login_required
@@ -1193,13 +1340,13 @@ def create_app(config_overrides=None):
         user = db.session.get(User, user_id)
         if user is None:
             flash('User not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_users_anchor())
 
         user.is_active = True
         record_audit('user.activated', 'user', f'Activated {user.email}.', actor=current_user, target_id=user.id)
         db.session.commit()
         flash('User activated.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_users_anchor())
 
     @app.route('/admin/users/<int:user_id>/reset-password', methods=['POST'])
     @login_required
@@ -1208,14 +1355,14 @@ def create_app(config_overrides=None):
         user = db.session.get(User, user_id)
         if user is None:
             flash('User not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_users_anchor())
 
         temporary_password = generate_temporary_password()
         user.set_password(temporary_password)
         record_audit('user.password_reset', 'user', f'Generated a temporary password for {user.email}.', actor=current_user, target_id=user.id)
         db.session.commit()
         flash(f'Temporary password for {user.email}: {temporary_password}', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_users_anchor())
 
     @app.route('/admin/users/<int:user_id>/admin', methods=['POST'])
     @login_required
@@ -1224,19 +1371,57 @@ def create_app(config_overrides=None):
         user = db.session.get(User, user_id)
         if user is None:
             flash('User not found.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_users_anchor())
 
         make_admin = request.form.get('is_admin') == 'true'
         if user.id == current_user.id and not make_admin:
             flash('You cannot remove your own admin access.', 'error')
-            return redirect(url_for('admin_dashboard'))
+            return redirect(admin_users_anchor())
+        if is_protected_admin_user(user) and not make_admin:
+            flash('The protected admin account must retain admin access.', 'error')
+            return redirect(admin_users_anchor())
 
         user.is_admin = make_admin
         action = 'Granted' if make_admin else 'Removed'
         record_audit('user.admin_changed', 'user', f'{action} admin access for {user.email}.', actor=current_user, target_id=user.id, details={'is_admin': make_admin})
         db.session.commit()
         flash('User access updated.', 'success')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(admin_users_anchor())
+
+    @app.route('/admin/users/<int:user_id>/delete', methods=['POST'])
+    @login_required
+    @admin_required
+    def admin_delete_user(user_id):
+        user = db.session.get(User, user_id)
+        if user is None:
+            flash('User not found.', 'error')
+            return redirect(admin_users_anchor())
+        if user.id == current_user.id:
+            flash('You cannot delete your own account.', 'error')
+            return redirect(admin_users_anchor())
+        if is_protected_admin_user(user):
+            flash('The protected admin account cannot be deleted.', 'error')
+            return redirect(admin_users_anchor())
+
+        deleted_email = user.email
+        deleted_item_ids = [item.id for item in Item.query.filter_by(user_id=user.id).all()]
+        deleted_store_ids = [store.id for store in Store.query.filter_by(user_id=user.id).all()]
+
+        AuditLog.query.filter_by(actor_user_id=user.id).update({'actor_user_id': None}, synchronize_session=False)
+        Item.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        Store.query.filter_by(user_id=user.id).delete(synchronize_session=False)
+        db.session.delete(user)
+        db.session.flush()
+        record_audit(
+            'user.deleted',
+            'user',
+            f'Deleted {deleted_email}.',
+            actor=current_user,
+            details={'deleted_email': deleted_email, 'item_ids': deleted_item_ids, 'store_ids': deleted_store_ids},
+        )
+        db.session.commit()
+        flash('User deleted.', 'success')
+        return redirect(admin_users_anchor())
 
     @app.after_request
     def apply_security_headers(response):
@@ -1419,6 +1604,33 @@ def create_app(config_overrides=None):
         )
         db.session.commit()
         return jsonify({'message': 'password updated'})
+
+    @app.route('/api/account/import-default-items', methods=['POST'])
+    @login_required
+    def api_import_default_items():
+        imported = import_default_items_for_user(current_user)
+        created_item_ids = [item.id for item in imported['created_items']]
+        overwritten_item_ids = [item.id for item in imported['overwritten_items']]
+        record_audit(
+            'user.default_items_imported',
+            'user',
+            f'{current_user.email} imported default items.',
+            actor=current_user,
+            target_id=current_user.id,
+            details={
+                'created_store_ids': [store.id for store in imported['created_stores']],
+                'created_item_ids': created_item_ids,
+                'overwritten_item_ids': overwritten_item_ids,
+            },
+        )
+        db.session.commit()
+        return jsonify(
+            {
+                'message': 'default items imported',
+                'created_count': len(created_item_ids),
+                'overwritten_count': len(overwritten_item_ids),
+            }
+        )
 
     return app
 
