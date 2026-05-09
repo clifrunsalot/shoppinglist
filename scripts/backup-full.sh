@@ -36,14 +36,14 @@ done
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/backup-defaults.sh [--gpg-recipient <recipient>]
+  scripts/backup-full.sh [--gpg-recipient <recipient>]
 
 Examples:
-  scripts/backup-defaults.sh
-  scripts/backup-defaults.sh --gpg-recipient ops@example.com
+  scripts/backup-full.sh
+  scripts/backup-full.sh --gpg-recipient ops@example.com
 
 Behavior:
-  - Creates a defaults-only backup under backups/defaults.
+  - Creates a full schema+data backup under backups/full.
   - Applies umask 077 so backup files are owner-readable/writable only.
   - Optionally encrypts output with GPG when --gpg-recipient is provided.
 EOF
@@ -75,9 +75,9 @@ fi
 
 umask 077
 
-mkdir -p backups/defaults
+mkdir -p backups/full
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
-OUT_FILE="backups/defaults/default-templates-${TIMESTAMP}.sql"
+OUT_FILE="backups/full/full-backup-${TIMESTAMP}.sql"
 if [[ -n "$GPG_RECIPIENT" ]]; then
   OUT_FILE="${OUT_FILE}.gpg"
 fi
@@ -85,21 +85,13 @@ fi
 if [[ -n "${DATABASE_URL:-}" ]]; then
   if [[ -n "$GPG_RECIPIENT" ]]; then
     pg_dump "$DATABASE_URL" \
-      --data-only \
-      --inserts \
-      --column-inserts \
-      --table default_store_templates \
-      --table default_category_templates \
-      --table default_item_templates \
+      --clean \
+      --if-exists \
       | gpg --batch --yes --encrypt --recipient "$GPG_RECIPIENT" --output "$OUT_FILE"
   else
     pg_dump "$DATABASE_URL" \
-      --data-only \
-      --inserts \
-      --column-inserts \
-      --table default_store_templates \
-      --table default_category_templates \
-      --table default_item_templates \
+      --clean \
+      --if-exists \
       > "$OUT_FILE"
   fi
 else
@@ -115,25 +107,17 @@ else
     docker-compose exec -T db pg_dump \
       -U "$DB_USER" \
       -d "$DB_NAME" \
-      --data-only \
-      --inserts \
-      --column-inserts \
-      --table default_store_templates \
-      --table default_category_templates \
-      --table default_item_templates \
+      --clean \
+      --if-exists \
       | gpg --batch --yes --encrypt --recipient "$GPG_RECIPIENT" --output "$OUT_FILE"
   else
     docker-compose exec -T db pg_dump \
       -U "$DB_USER" \
       -d "$DB_NAME" \
-      --data-only \
-      --inserts \
-      --column-inserts \
-      --table default_store_templates \
-      --table default_category_templates \
-      --table default_item_templates \
+      --clean \
+      --if-exists \
       > "$OUT_FILE"
   fi
 fi
 
-echo "Defaults backup written: $OUT_FILE"
+echo "Full backup written: $OUT_FILE"
