@@ -380,12 +380,27 @@
               <p class="mt-1 text-xs leading-5 text-gray-500">Enter your current password, then choose a new one with at least 8 characters.</p>
             </div>
             <div class="space-y-3">
-              <input x-model="passwordForm.current_password" type="password" autocomplete="current-password" placeholder="Current password"
-                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              <input x-model="passwordForm.new_password" type="password" autocomplete="new-password" placeholder="New password"
-                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              <input x-model="passwordForm.confirmation_password" type="password" autocomplete="new-password" placeholder="Confirm new password"
-                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <div class="relative">
+                <input x-model="passwordForm.current_password" :type="showCurrentPassword ? 'text' : 'password'" autocomplete="current-password" placeholder="Current password"
+                  class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 pr-14 text-sm" />
+                <button type="button" @click="showCurrentPassword = !showCurrentPassword"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-widest text-gray-400 hover:text-gray-700"
+                  x-text="showCurrentPassword ? 'Hide' : 'Show'"></button>
+              </div>
+              <div class="relative">
+                <input x-model="passwordForm.new_password" :type="showNewPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="New password"
+                  class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 pr-14 text-sm" />
+                <button type="button" @click="showNewPassword = !showNewPassword"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-widest text-gray-400 hover:text-gray-700"
+                  x-text="showNewPassword ? 'Hide' : 'Show'"></button>
+              </div>
+              <div class="relative">
+                <input x-model="passwordForm.confirmation_password" :type="showConfirmPassword ? 'text' : 'password'" autocomplete="new-password" placeholder="Confirm new password"
+                  class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 pr-14 text-sm" />
+                <button type="button" @click="showConfirmPassword = !showConfirmPassword"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold uppercase tracking-widest text-gray-400 hover:text-gray-700"
+                  x-text="showConfirmPassword ? 'Hide' : 'Show'"></button>
+              </div>
               <template x-if="passwordMessage.text">
                 <div class="rounded-2xl border px-3 py-2 text-sm"
                   :class="passwordMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
@@ -585,6 +600,9 @@
         newItem: { name: '', quantity: '', unit: '', category: '', store_id: null },
         newStoreName: '',
         passwordForm: { current_password: '', new_password: '', confirmation_password: '' },
+        showCurrentPassword: false,
+        showNewPassword: false,
+        showConfirmPassword: false,
         passwordMessage: { type: '', text: '' },
         passwordSaving: false,
         importDefaultsMessage: { type: '', text: '' },
@@ -789,6 +807,9 @@
 
         resetPasswordForm() {
           this.passwordForm = { current_password: '', new_password: '', confirmation_password: '' };
+          this.showCurrentPassword = false;
+          this.showNewPassword = false;
+          this.showConfirmPassword = false;
         },
 
         setSelectedItemFromState(item) {
