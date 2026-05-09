@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 import click
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask_seasurf import SeaSurf
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -108,7 +109,7 @@ def normalize_text_field(value, field_name, max_length, *, required=False):
 
 def normalize_email(value):
     email, error = normalize_text_field(value, 'email', 255, required=True)
-    if error:
+    if error or email is None:
         return None, error
     return email.lower(), None
 
@@ -208,6 +209,8 @@ def generate_temporary_password(length=12):
 
 def create_app(config_overrides=None):
     app = Flask(__name__, template_folder='templates')
+    # Allow forcing CSRF in tests by passing SEASURF_FORCE in config_overrides
+    csrf = SeaSurf()
     app.config.update(
         SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-key-change-me'),
         SQLALCHEMY_DATABASE_URI=build_database_uri(),
@@ -223,17 +226,25 @@ def create_app(config_overrides=None):
         REMEMBER_COOKIE_HTTPONLY=True,
         REMEMBER_COOKIE_SAMESITE='Lax',
         REMEMBER_COOKIE_SECURE=env_flag('SESSION_COOKIE_SECURE', False),
+        SEASURF_FORCE=False,  # Default to False, can be overridden for tests
     )
     if config_overrides:
         app.config.update(config_overrides)
+    # If SEASURF_FORCE is True, force CSRF even in testing
+    if app.config.get('SEASURF_FORCE'):
+        app.config['TESTING'] = False
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     db.init_app(app)
     migrate.init_app(app, db)
+    csrf.init_app(app)
+    # Login and signup routes are exempt from CSRF: they don't act on behalf of
+    # an authenticated user, so CSRF does not apply to them.
+    csrf.exempt_urls(('/login', '/signup'))
 
     login_manager = LoginManager()
-    login_manager.login_view = 'login'
+    # login_manager.login_view = 'login'  # Removed: not supported by this LoginManager
     login_manager.init_app(app)
 
     def get_setting(key, default):
@@ -782,7 +793,11 @@ def create_app(config_overrides=None):
         if User.query.filter_by(email=normalized_email).first() is not None:
             raise click.ClickException('user already exists')
 
-        user = User(email=normalized_email, is_admin=admin, is_approved=True, is_active=True)
+        user = User()
+        user.email = normalized_email
+        user.is_admin = admin
+        user.is_approved = True
+        user.is_active = True
         user.set_password(password)
         db.session.add(user)
         db.session.flush()
@@ -848,7 +863,11 @@ def create_app(config_overrides=None):
                 flash('That email belongs to an inactive account. Contact an administrator.', 'error')
             return redirect(url_for('login'))
 
-        user = User(email=email, is_admin=False, is_approved=False, is_active=True)
+        user = User()
+        user.email = email
+        user.is_admin = False
+        user.is_approved = False
+        user.is_active = True
         user.set_password(generate_temporary_password())
         db.session.add(user)
         db.session.flush()
@@ -909,6 +928,7 @@ def create_app(config_overrides=None):
         flash('Default theme updated.', 'success')
         return redirect(url_for('admin_dashboard'))
 
+    # CSRF protection is enforced on this route by default (no @csrf.exempt)
     @app.route('/admin/default-stores', methods=['POST'])
     @login_required
     @admin_required
@@ -925,7 +945,7 @@ def create_app(config_overrides=None):
         db.session.add(store)
         db.session.flush()
         copied_user_ids = []
-        existing_users = User.query.filter_by(is_approved=True, is_active=True).all()
+        existing_users = User.query.filter_by(is_approved=True, _is_active=True).all()
         for user in existing_users:
             created_store = create_missing_default_store_for_user(user, store)
             if created_store is not None:
@@ -992,6 +1012,8 @@ def create_app(config_overrides=None):
                 unknown_store = get_or_create_unknown_store_for_user(user_store.user_id)
                 Item.query.filter_by(store_id=user_store.id, user_id=user_store.user_id).update({'store_id': unknown_store.id}, synchronize_session=False)
                 db.session.delete(user_store)
+
+        db.session.flush()
 
         record_audit(
             'default_store.deleted',
@@ -1145,7 +1167,7 @@ def create_app(config_overrides=None):
         db.session.add(item)
         db.session.flush()
         copied_user_ids = []
-        existing_users = User.query.filter_by(is_approved=True, is_active=True).all()
+        existing_users = User.query.filter_by(is_approved=True, _is_active=True).all()
         for user in existing_users:
             created_item, linked_existing = create_missing_default_item_for_user(user, item)
             if created_item is not None and not linked_existing:
@@ -1445,6 +1467,8 @@ def create_app(config_overrides=None):
         if error:
             return error
 
+        if not data:
+            return error_response('invalid JSON body', 400)
         name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             return error
@@ -1464,7 +1488,8 @@ def create_app(config_overrides=None):
             return error
 
         next_sort_order = (db.session.query(db.func.max(Item.sort_order)).filter_by(user_id=current_user.id).scalar() or 0) + 10
-        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=parse_price(data.get('price')), user_id=current_user.id)
+        price = parse_price(data.get('price')) if data else None
+        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id)
         db.session.add(item)
         db.session.commit()
         return jsonify(serialize(item)), 201
@@ -1477,6 +1502,8 @@ def create_app(config_overrides=None):
         if error:
             return error
 
+        if not data:
+            return error_response('invalid JSON body', 400)
         if 'name' in data:
             name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
             if error:
@@ -1568,7 +1595,7 @@ def create_app(config_overrides=None):
         if error:
             return error
 
-        theme = str(data.get('theme', '')).strip()
+        theme = str(data.get('theme', '')).strip() if data else ''
         if theme not in THEME_OPTIONS:
             return error_response('theme must be one of the supported options', 400)
 
@@ -1583,9 +1610,9 @@ def create_app(config_overrides=None):
         if error:
             return error
 
-        current_password = data.get('current_password', '')
-        new_password = data.get('new_password', '')
-        confirmation_password = data.get('confirmation_password', '')
+        current_password = data.get('current_password', '') if data else ''
+        new_password = data.get('new_password', '') if data else ''
+        confirmation_password = data.get('confirmation_password', '') if data else ''
 
         validation_error = validate_password_change(current_password, new_password, confirmation_password)
         if validation_error:

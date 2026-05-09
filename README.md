@@ -107,6 +107,11 @@ The app is now production-ready enough for a managed platform such as Render or 
 
 The Docker image now serves the app with Gunicorn, which is appropriate for cloud deployment.
 
+Restore runbook
+
+- For a lightweight owner-operated backup and restore process, see docs/small-app-restore-runbook.md.
+- Helper scripts for default-template backup and restore are in scripts/backup-defaults.sh and scripts/restore-defaults.sh.
+
 Database migrations
 
 Run migrations from the `web` container:

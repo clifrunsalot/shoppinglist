@@ -228,6 +228,7 @@
         <div class="text-sm font-semibold max-w-[14rem] truncate">{{ current_user.email }}</div>
       </div>
       <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20">
           Log out
         </button>
@@ -768,14 +769,11 @@
           this.theme = themeId;
           this.syncThemeColor();
           try {
-            const res = await fetch('/api/preferences/theme', {
+            await this.requestJson('/api/preferences/theme', {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ theme: themeId }),
-            });
-            if (!res.ok) {
-              throw new Error('Unable to save theme preference.');
-            }
+            }, 'Unable to save theme preference.');
           } catch (err) {
             alert(err.message);
           }
@@ -1319,8 +1317,27 @@
           return trimmedValue || null;
         },
 
+        getCsrfToken() {
+          const cookie = document.cookie
+            .split('; ')
+            .find(entry => entry.startsWith('_csrf_token='));
+          if (!cookie) {
+            return '';
+          }
+          return decodeURIComponent(cookie.split('=')[1] || '');
+        },
+
         async requestJson(url, options = {}, defaultMessage = 'Request failed.') {
-          const res = await fetch(url, options);
+          const method = (options.method || 'GET').toUpperCase();
+          const headers = { ...(options.headers || {}) };
+          if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
+            const csrfToken = this.getCsrfToken();
+            if (csrfToken) {
+              headers['X-CSRFToken'] = csrfToken;
+            }
+          }
+
+          const res = await fetch(url, { ...options, headers });
           const contentType = res.headers.get('content-type') || '';
           const payload = contentType.includes('application/json') ? await res.json() : null;
 
@@ -1336,15 +1353,11 @@
           this.clearPasswordMessage();
 
           try {
-            const res = await fetch('/api/account/password', {
+            await this.requestJson('/api/account/password', {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(this.passwordForm),
-            });
-            const payload = await res.json();
-            if (!res.ok) {
-              throw new Error(payload.error || 'Unable to update password.');
-            }
+            }, 'Unable to update password.');
 
             this.passwordMessage = { type: 'success', text: 'Password updated successfully.' };
             this.resetPasswordForm();

@@ -15,7 +15,15 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_admin = db.Column(db.Boolean, nullable=False, default=False)
     is_approved = db.Column(db.Boolean, nullable=False, default=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    _is_active = db.Column('is_active', db.Boolean, nullable=False, default=True)
+
+    @property
+    def is_active(self):
+        return self._is_active
+
+    @is_active.setter
+    def is_active(self, value):
+        self._is_active = value
     theme_preference = db.Column(db.String(20), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 

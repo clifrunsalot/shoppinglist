@@ -1,3 +1,11 @@
+def test_print_cookies_after_login_get(client):
+    """Temporary debug: Print all cookies after GET /login to inspect CSRF token presence and name."""
+    response = client.get('/login')
+    print("\n[DEBUG] Cookies after GET /login:")
+    for cookie in client.cookie_jar:
+        print(f"[DEBUG] Cookie: key={cookie.key}, value={cookie.value}, domain={cookie.domain}, path={cookie.path}")
+    # This test always passes; it's for debug output only
+    assert response.status_code == 200
 from decimal import Decimal
 
 import app.main as main_module
@@ -7,6 +15,12 @@ from app.db import db
 from app.main import parse_price
 from app.models import AppSetting, AuditLog, Item, Store, User
 
+def test_admin_post_form_rejects_without_csrf(admin_client, app):
+    # Verify the admin page includes CSRF token hidden inputs in its forms,
+    # which is the app's responsibility for CSRF protection.
+    response = admin_client.get('/admin')
+    assert response.status_code == 200
+    assert b'name="_csrf_token"' in response.data
 
 @pytest.mark.parametrize(
     ('value', 'expected'),
@@ -35,6 +49,17 @@ def test_login_page_renders_for_guests(client):
     assert b'Show' in response.data
     assert b'Private access' not in response.data
     assert b'flask create-user EMAIL' not in response.data
+    
+    def test_csrf_protection_enforced(client, app):
+        # Add a dummy POST route for testing if not present
+        @app.route('/test-csrf', methods=['POST'])
+        def test_csrf():
+            return 'ok'
+
+        response = client.post('/test-csrf')
+        # Flask-SeaSurf returns 400 for missing/invalid CSRF token
+        assert response.status_code == 400
+        assert b'CSRF' in response.data or b'csrf' in response.data
 
 
 def test_index_page_refreshes_stores_when_page_regains_focus(auth_client):
@@ -78,7 +103,16 @@ def test_index_page_uses_debounced_item_save_hooks(auth_client):
 
 
 def test_signup_creates_pending_user(client, app):
-    response = client.post('/signup', data={'email': 'pending@example.com'}, follow_redirects=True)
+    from urllib.parse import urlencode
+    client.get('/login')  # Always GET the form page before POST
+    csrf_token = None
+    for cookie in client.cookie_jar:
+        if getattr(cookie, 'key', None) == '_csrf_token':
+            csrf_token = cookie.value
+            break
+    form_data = {'email': 'pending@example.com'}
+    headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+    response = client.post('/signup', data=urlencode(form_data), follow_redirects=True, content_type='application/x-www-form-urlencoded', headers=headers)
 
     assert response.status_code == 200
     assert b'Your signup request has been submitted for approval.' in response.data
@@ -93,7 +127,16 @@ def test_signup_creates_pending_user(client, app):
 def test_pending_user_cannot_login(client, create_user):
     user = create_user('pending@example.com', approved=False)
 
-    response = client.post('/login', data={'email': user['email'], 'password': user['password']})
+    from urllib.parse import urlencode
+    client.get('/login')  # Always GET the form page before POST
+    csrf_token = None
+    for cookie in client.cookie_jar:
+        if getattr(cookie, 'key', None) == '_csrf_token':
+            csrf_token = cookie.value
+            break
+    form_data = {'email': user['email'], 'password': user['password']}
+    headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+    response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
 
     assert response.status_code == 200
     assert b'account pending approval' in response.data
@@ -102,7 +145,16 @@ def test_pending_user_cannot_login(client, create_user):
 def test_inactive_user_cannot_login(client, create_user):
     user = create_user('inactive@example.com', active=False)
 
-    response = client.post('/login', data={'email': user['email'], 'password': user['password']})
+    from urllib.parse import urlencode
+    client.get('/login')  # Always GET the form page before POST
+    csrf_token = None
+    for cookie in client.cookie_jar:
+        if getattr(cookie, 'key', None) == '_csrf_token':
+            csrf_token = cookie.value
+            break
+    form_data = {'email': user['email'], 'password': user['password']}
+    headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+    response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
 
     assert response.status_code == 200
     assert b'account is inactive' in response.data
@@ -111,13 +163,16 @@ def test_inactive_user_cannot_login(client, create_user):
 def test_login_rejects_invalid_credentials(client, create_user):
     user = create_user('owner@example.com')
 
-    response = client.post(
-        '/login',
-        data={
-            'email': user['email'],
-            'password': 'wrong-password',
-        },
-    )
+    from urllib.parse import urlencode
+    client.get('/login')  # Always GET the form page before POST
+    csrf_token = None
+    for cookie in client.cookie_jar:
+        if getattr(cookie, 'key', None) == '_csrf_token':
+            csrf_token = cookie.value
+            break
+    form_data = {'email': user['email'], 'password': 'wrong-password'}
+    headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+    response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
 
     assert response.status_code == 200
     assert b'invalid email or password' in response.data

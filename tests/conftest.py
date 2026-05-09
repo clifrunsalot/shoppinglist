@@ -6,26 +6,32 @@ from werkzeug.serving import make_server
 
 from app.db import db
 from app.main import create_app
-from app.models import DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, User
+from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, Store, User
 
 
-@pytest.fixture
-def app(tmp_path: Path):
+@pytest.fixture(scope="session")
+def app():
     test_app = create_app(
         {
             'TESTING': True,
             'SECRET_KEY': 'test-secret-key',
-            'SQLALCHEMY_DATABASE_URI': f"sqlite:///{tmp_path / 'test.sqlite'}",
+            'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+            # Disable pool-level reset_on_return.  After a session commits and is then
+            # closed, SQLAlchemy's default 'rollback' reset would issue ROLLBACK to
+            # SQLite when no transaction is active, causing an OperationalError that
+            # invalidates the StaticPool connection and loses the entire in-memory DB.
+            'SQLALCHEMY_ENGINE_OPTIONS': {'pool_reset_on_return': None},
         }
     )
 
+    # Create schema once for the whole session.
     with test_app.app_context():
         db.create_all()
 
     yield test_app
 
+    # Drop schema at the end of the session.
     with test_app.app_context():
-        db.session.remove()
         db.drop_all()
 
 
@@ -38,13 +44,17 @@ def client(app):
 def create_user(app):
     def _create_user(email, password='password123!', *, admin=False, approved=True, active=True, theme_preference=None):
         with app.app_context():
-            user = User(
-                email=email.strip().lower(),
-                is_admin=admin,
-                is_approved=approved,
-                is_active=active,
-                theme_preference=theme_preference,
-            )
+            normalized_email = email.strip().lower() if email else None
+            existing = User.query.filter_by(email=normalized_email).first()
+            if existing:
+                db.session.delete(existing)
+                db.session.commit()
+            user = User()
+            user.email = normalized_email
+            user.is_admin = admin
+            user.is_approved = approved
+            user.is_active = active
+            user.theme_preference = theme_preference
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
@@ -63,13 +73,22 @@ def create_user(app):
 @pytest.fixture
 def login(client):
     def _login(email, password, *, follow_redirects=False):
+        from urllib.parse import urlencode
+        # Get CSRF token from cookie
+        client.get('/login')  # Always GET the form page before POST
+        csrf_token = None
+        for cookie in client.cookie_jar:
+            if getattr(cookie, 'key', None) == '_csrf_token':
+                csrf_token = cookie.value
+                break
+        form_data = {'email': email, 'password': password}
+        headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
         return client.post(
             '/login',
-            data={
-                'email': email,
-                'password': password,
-            },
+            data=urlencode(form_data),
             follow_redirects=follow_redirects,
+            content_type='application/x-www-form-urlencoded',
+            headers=headers,
         )
 
     return _login
@@ -95,7 +114,16 @@ def admin_user(create_user):
 @pytest.fixture
 def admin_client(app, admin_user):
     client = app.test_client()
-    response = client.post('/login', data={'email': admin_user['email'], 'password': admin_user['password']})
+    from urllib.parse import urlencode
+    client.get('/login')  # Always GET the form page before POST
+    csrf_token = None
+    for cookie in client.cookie_jar:
+        if getattr(cookie, 'key', None) == '_csrf_token':
+            csrf_token = cookie.value
+            break
+    form_data = {'email': admin_user['email'], 'password': admin_user['password']}
+    headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+    response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
     assert response.status_code == 302
     return client
 
@@ -132,8 +160,8 @@ def create_default_templates(app):
 @pytest.fixture
 def create_default_categories(app):
     def _create_default_categories(*names):
-        created_categories = []
         with app.app_context():
+            created_categories = []
             for name in names:
                 category = DefaultCategoryTemplate(name=name)
                 db.session.add(category)
@@ -178,3 +206,20 @@ def browser_page():
         finally:
             context.close()
             browser.close()
+
+
+@pytest.fixture(autouse=True)
+def clean_db_between_tests(app):
+    """Clear all data tables after each test to prevent state leaking between tests."""
+    yield
+    with app.app_context():
+        db.session.rollback()
+        Item.query.delete()
+        Store.query.delete()
+        AuditLog.query.delete()
+        DefaultItemTemplate.query.delete()
+        DefaultStoreTemplate.query.delete()
+        DefaultCategoryTemplate.query.delete()
+        AppSetting.query.delete()
+        User.query.delete()
+        db.session.commit()
