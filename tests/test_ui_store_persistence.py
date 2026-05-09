@@ -140,6 +140,35 @@ def seeded_alphabetical_item_order_data(app, create_user):
     }
 
 
+@pytest.fixture
+def seeded_store_filter_ui_data(app, create_user):
+    user = create_user('store-filter-ui-user@example.com')
+
+    with app.app_context():
+        pantry_template = DefaultStoreTemplate(name='Pantry', sort_order=0)
+        market_template = DefaultStoreTemplate(name='Market', sort_order=0)
+        db.session.add_all([pantry_template, market_template])
+        db.session.flush()
+
+        pantry = Store(name='Pantry', user_id=user['id'], sort_order=10, template_store_id=pantry_template.id)
+        market = Store(name='Market', user_id=user['id'], sort_order=20, template_store_id=market_template.id)
+        db.session.add_all([pantry, market])
+        db.session.flush()
+
+        apples = Item(name='Apples', quantity=1, user_id=user['id'], sort_order=10, store_id=pantry.id)
+        bread = Item(name='Bread', quantity=1, user_id=user['id'], sort_order=20, store_id=market.id)
+        db.session.add_all([apples, bread])
+        db.session.commit()
+
+        return {
+            'email': user['email'],
+            'password': user['password'],
+            'store_ids': {'pantry': pantry.id, 'market': market.id},
+            'item_ids': {'apples': apples.id, 'bread': bread.id},
+            'store_names': {'pantry': pantry.name, 'market': market.name},
+        }
+
+
 def test_store_selection_persists_when_switching_items(browser_page, live_server, seeded_store_persistence_data, app):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
@@ -274,6 +303,39 @@ def test_category_filter_row_stays_on_one_line_on_mobile(browser_page, live_serv
     )
 
     assert len(set(top_positions)) == 1
+
+
+def test_store_filter_shows_active_row_without_trigger_label_duplication(browser_page, live_server, seeded_store_filter_ui_data):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_filter_ui_data['email'])
+    page.locator('#password').fill(seeded_store_filter_ui_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_row = page.get_by_test_id(f"item-row-{seeded_store_filter_ui_data['item_ids']['apples']}")
+    bread_row = page.get_by_test_id(f"item-row-{seeded_store_filter_ui_data['item_ids']['bread']}")
+    apples_row.wait_for()
+    bread_row.wait_for()
+
+    store_trigger = page.get_by_test_id('store-filter-trigger')
+    expect(store_trigger).to_be_visible()
+
+    store_trigger.click()
+    page.get_by_test_id(f"store-filter-{seeded_store_filter_ui_data['store_ids']['pantry']}").click()
+
+    expect(page.get_by_test_id('store-filter-clear')).to_be_visible()
+    expect(page.get_by_test_id('store-filter-active-name')).to_have_text(seeded_store_filter_ui_data['store_names']['pantry'])
+    expect(store_trigger).not_to_contain_text(seeded_store_filter_ui_data['store_names']['pantry'])
+
+    expect(apples_row).to_be_visible()
+    expect(bread_row).to_be_hidden()
+
+    page.get_by_test_id('store-filter-clear').click()
+    expect(apples_row).to_be_visible()
+    expect(bread_row).to_be_visible()
 
 
 def test_normal_mode_items_list_is_alphabetical_by_default(browser_page, live_server, seeded_alphabetical_item_order_data):

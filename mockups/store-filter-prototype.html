@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Store Filter – Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    :root {
+      --accent: #16a34a;
+      --accent-strong: #166534;
+      --accent-soft: #dcfce7;
+      --accent-soft-border: #86efac;
+      --accent-surface: rgba(22,163,74,0.16);
+      --page-bg: linear-gradient(180deg,#f3f7f2 0%,#eef6f0 100%);
+    }
+    body { background: var(--page-bg); -webkit-tap-highlight-color: transparent; }
+    .theme-header { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%); }
+    .theme-filter { border-color:#e5e7eb; background:rgba(255,255,255,0.92); color:#6b7280; }
+    .theme-filter:hover { border-color:var(--accent-soft-border); }
+    .theme-filter-active { background:var(--accent); color:white; border-color:var(--accent); }
+    .category-chip-rail { -ms-overflow-style:none; scrollbar-width:none; }
+    .category-chip-rail::-webkit-scrollbar { display:none; }
+
+    /* store popover */
+    .store-popover {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      min-width: 180px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 8px 28px -4px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06);
+      padding: 6px 0;
+      z-index: 50;
+    }
+    .store-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 14px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: #374151;
+      cursor: pointer;
+      transition: background 120ms;
+      white-space: nowrap;
+    }
+    .store-option:hover { background: #f3f4f6; }
+    .store-option.active { color: var(--accent); background: var(--accent-soft); }
+    .store-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0;
+      opacity: 0;
+      transition: opacity 150ms;
+    }
+    .store-option.active .store-dot { opacity: 1; }
+    .store-btn-active {
+      background: var(--accent-soft) !important;
+      border-color: var(--accent-soft-border) !important;
+      color: var(--accent) !important;
+    }
+  </style>
+</head>
+
+<body x-data="{
+  activeFilter: 'all',
+  activeStore: null,
+  storePopoverOpen: false,
+
+  categories: [
+    { id:1, name:'Dairy' },
+    { id:2, name:'Produce' },
+    { id:3, name:'Bakery' },
+    { id:4, name:'Frozen' },
+    { id:5, name:'Snacks' },
+  ],
+  stores: [
+    { id:1, name:'Whole Foods' },
+    { id:2, name:'Trader Joe\'s' },
+    { id:3, name:'Costco' },
+  ],
+  items: [
+    { id:1, name:'Milk',        category:'Dairy',   store_id:1, checked:false },
+    { id:2, name:'Eggs',        category:'Dairy',   store_id:2, checked:false },
+    { id:3, name:'Sourdough',   category:'Bakery',  store_id:1, checked:true  },
+    { id:4, name:'Spinach',     category:'Produce', store_id:3, checked:false },
+    { id:5, name:'Frozen Pizza',category:'Frozen',  store_id:2, checked:false },
+    { id:6, name:'Almonds',     category:'Snacks',  store_id:1, checked:false },
+    { id:7, name:'Cheddar',     category:'Dairy',   store_id:3, checked:false },
+    { id:8, name:'Blueberries', category:'Produce', store_id:1, checked:true  },
+  ],
+
+  get filteredItems() {
+    return this.items.filter(item => {
+      const storeMatch = !this.activeStore || item.store_id === this.activeStore;
+      if (!storeMatch) return false;
+      if (this.activeFilter === 'all')     return true;
+      if (this.activeFilter === 'pending') return !item.checked;
+      if (this.activeFilter === 'done')    return item.checked;
+      return item.category === this.activeFilter;
+    });
+  },
+
+  get activeStoreName() {
+    if (!this.activeStore) return null;
+    return this.stores.find(s => s.id === this.activeStore)?.name ?? null;
+  },
+
+  setStoreFilter(storeId) {
+    this.activeStore = (this.activeStore === storeId) ? null : storeId;
+    this.storePopoverOpen = false;
+  },
+
+  storeName(storeId) {
+    return this.stores.find(s => s.id === storeId)?.name ?? '';
+  }
+}" class="min-h-screen flex flex-col">
+
+  <!-- HEADER -->
+  <header class="theme-header px-4 py-3 flex items-center justify-between shadow-md">
+    <div class="flex items-center gap-3">
+      <div style="width:2.6rem;height:2.6rem;border-radius:9999px;background:#0f172a;border:1px solid rgba(255,255,255,0.78);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg style="width:1.55rem;height:1.55rem;color:#fff;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m12-9l2 9m-9-4h4"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-white font-bold text-base leading-tight">Grocery List</h1>
+        <p class="text-green-200 text-xs leading-tight">Weekly shop</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-green-100 text-xs font-medium bg-white/20 rounded-full px-2.5 py-1">
+        <span x-text="filteredItems.length"></span> items
+      </span>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="flex-1 overflow-y-auto px-3 py-3 pb-24">
+
+    <!-- Filter / sort bar -->
+    <div class="sticky top-0 z-20 -mx-3 px-3 pt-2 pb-2 bg-white/80 backdrop-blur-sm border-b border-white/60">
+      <div class="flex items-center gap-2">
+
+        <!-- Settings gear (static in prototype) -->
+        <button class="flex-shrink-0 flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12a3 3 0 106 0 3 3 0 00-6 0z" />
+          </svg>
+        </button>
+
+        <!-- Category chip rail -->
+        <div class="category-chip-rail min-w-0 flex-1 overflow-x-auto">
+          <div class="flex min-w-max flex-nowrap items-center gap-2 pr-2 whitespace-nowrap">
+            <button @click="activeFilter='all'" class="theme-filter shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+              :class="activeFilter==='all' ? 'theme-filter-active' : ''">All</button>
+            <template x-for="cat in categories" :key="cat.id">
+              <button @click="activeFilter=cat.name" class="theme-filter shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+                :class="activeFilter===cat.name ? 'theme-filter-active' : ''" x-text="cat.name"></button>
+            </template>
+            <button @click="activeFilter='pending'" class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+              :class="activeFilter==='pending' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-gray-500 border-gray-200 hover:border-amber-400'">Pending</button>
+            <button @click="activeFilter='done'" class="shrink-0 whitespace-nowrap text-xs px-3 py-1 rounded-full border font-medium transition-colors"
+              :class="activeFilter==='done' ? 'bg-gray-600 text-white border-gray-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'">Done</button>
+          </div>
+        </div>
+
+        <!-- ── STORE FILTER BUTTON (new) ── -->
+        <div class="relative flex-shrink-0" x-data>
+          <button @click="storePopoverOpen = !storePopoverOpen"
+            @keydown.escape.window="storePopoverOpen = false"
+            class="flex items-center justify-center gap-1 flex-shrink-0 h-9 w-10 rounded-lg border font-medium text-xs transition-colors"
+            :class="activeStore ? 'store-btn-active border' : 'bg-white/90 border-gray-200 text-gray-500 hover:bg-gray-50'"
+            :title="activeStore ? 'Store filter: ' + activeStoreName : 'Filter by store'">
+            <!-- store/cart icon -->
+            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2 9m12-9l2 9m-4-4h.01M9 19h.01"/>
+            </svg>
+            <!-- chevron -->
+            <svg class="w-2.5 h-2.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+          </button>
+
+          <!-- popover -->
+          <div x-show="storePopoverOpen" x-cloak
+            @click.outside="storePopoverOpen = false"
+            class="store-popover">
+
+            <!-- "All stores" option -->
+            <div @click="setStoreFilter(null); activeStore = null; storePopoverOpen = false"
+              class="store-option" :class="!activeStore ? 'active' : ''">
+              <span class="store-dot"></span>
+              All stores
+            </div>
+
+            <div class="my-1 border-t border-gray-100"></div>
+
+            <template x-for="store in stores" :key="store.id">
+              <div @click="setStoreFilter(store.id)"
+                class="store-option" :class="activeStore === store.id ? 'active' : ''">
+                <span class="store-dot"></span>
+                <span x-text="store.name"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+        <!-- ── end store filter ── -->
+
+      </div>
+
+      <!-- Active store pill (appears below rail when a store is selected) -->
+      <div x-show="activeStore" x-cloak class="mt-1.5 flex items-center gap-1.5">
+        <span class="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-0.5"
+          style="background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-soft-border)">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4"/>
+          </svg>
+          <span x-text="activeStoreName"></span>
+        </span>
+        <button @click="activeStore = null" class="text-gray-400 hover:text-gray-600 text-xs font-medium transition-colors">Clear</button>
+      </div>
+    </div>
+
+    <!-- Search + count row -->
+    <div class="mt-3 mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+      <input type="text" placeholder="Filter items…"
+        class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-700 bg-white/90 outline-none focus:border-green-300 focus:ring-1 focus:ring-green-200" />
+      <div class="bg-white/85 border border-gray-200 rounded-full px-3 py-2 text-xs font-medium text-gray-600 shadow-sm self-start sm:self-auto">
+        <span class="text-gray-400">Count</span>
+        <span class="ml-1.5 font-semibold text-gray-900" x-text="filteredItems.length"></span>
+      </div>
+    </div>
+
+    <!-- Item list -->
+    <ul class="space-y-2">
+      <template x-for="item in filteredItems" :key="item.id">
+        <li class="bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3">
+          <button type="button" @click="item.checked = !item.checked"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none flex-shrink-0">
+            <span x-text="item.checked ? '✅' : '⬜'"></span>
+          </button>
+          <div class="flex-1 min-w-0">
+            <p class="font-medium truncate transition-colors"
+              :class="item.checked ? 'line-through text-gray-400' : 'text-gray-800'" x-text="item.name"></p>
+            <p class="text-xs text-gray-400 truncate mt-0.5">
+              <span x-text="item.category"></span>
+              <span class="mx-1">·</span>
+              <span x-text="storeName(item.store_id)"></span>
+            </p>
+          </div>
+          <span class="hidden sm:inline-block text-xs rounded-full px-2 py-0.5 font-medium flex-shrink-0"
+            style="background:var(--accent-soft);color:var(--accent)" x-text="item.category"></span>
+        </li>
+      </template>
+      <template x-if="filteredItems.length === 0">
+        <li class="text-center text-gray-400 text-sm py-10">No items match this filter.</li>
+      </template>
+    </ul>
+
+  </main>
+
+  <!-- PROTOTYPE NOTES -->
+  <div class="fixed bottom-0 inset-x-0 bg-gray-900 text-gray-200 text-xs px-4 py-3 space-y-1">
+    <p class="font-semibold text-white">Prototype notes</p>
+    <p>• Store icon button at far right of chip rail — zero extra row when idle.</p>
+    <p>• Popover lists stores; tap again or pick "All stores" to clear. Closes on outside-click / Escape.</p>
+    <p>• Active state: button turns accent-soft + shows store name + a subtle pill appears below the rail.</p>
+    <p>• "Clear" link next to the pill lets users dismiss without re-opening the popover.</p>
+  </div>
+
+</body>
+</html>
