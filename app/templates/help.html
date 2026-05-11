@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#16a34a" />
+  <title>Help | Grocery List</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --accent: #16a34a;
+      --accent-strong: #166534;
+      --accent-soft: #dcfce7;
+      --accent-soft-border: #86efac;
+      --page-bg: linear-gradient(180deg, #f3f7f2 0%, #eef6f0 100%);
+    }
+    body {
+      background: var(--page-bg);
+    }
+    .theme-header {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    }
+    .kbd {
+      display: inline-block;
+      padding: 0.1em 0.5em;
+      border-radius: 0.35em;
+      border: 1px solid #d1d5db;
+      background: #f9fafb;
+      font-family: ui-monospace, monospace;
+      font-size: 0.78em;
+      color: #374151;
+      vertical-align: baseline;
+    }
+    details > summary {
+      cursor: pointer;
+      list-style: none;
+    }
+    details > summary::-webkit-details-marker {
+      display: none;
+    }
+    details[open] .chevron {
+      transform: rotate(90deg);
+    }
+    .chevron {
+      transition: transform 200ms ease;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen text-slate-900">
+
+  <header class="theme-header text-white px-4 py-3 flex items-center gap-3 shadow-md sticky top-0 z-10">
+    <a href="{{ url_for('index') }}{% if ref == 'settings' %}?settings=1{% endif %}" class="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-white/20 flex-shrink-0">
+      ← Back
+    </a>
+    <h1 class="text-lg font-bold tracking-tight leading-none">Help</h1>
+  </header>
+
+  <main class="mx-auto max-w-2xl px-4 py-8 pb-16 space-y-10">
+
+    <!-- Intro -->
+    <section>
+      <h2 class="text-2xl font-bold text-slate-900 mb-2">Grocery List — User Guide</h2>
+      <p class="text-sm leading-6 text-slate-500">This guide covers everything you need to manage your personal grocery list. Use the sections below to find answers quickly.</p>
+    </section>
+
+    <!-- Managing your list -->
+    <section class="space-y-3">
+      <h3 class="text-base font-semibold uppercase tracking-widest text-slate-400">Managing Your List</h3>
+      <div class="rounded-2xl border border-white/70 bg-white/85 divide-y divide-gray-100 shadow-sm overflow-hidden">
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I add an item?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>Tap the <strong>+ Add Item</strong> button in the bottom-right corner. A panel slides up with two tabs:</p>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><strong>New Item</strong> — type in any name, quantity, unit, category, and store, then tap <strong>+ Add to List</strong>. Name and store are required.</li>
+              <li><strong>From Defaults</strong> — browse or search the curated default list. Tap any row to pre-fill the New Item form with that item's details. Items already on your list show an <span class="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">In list</span> badge; you can still tap them if you want a second entry with a different name.</li>
+            </ul>
+            <p>You can change the pre-filled name before saving — the item will be saved as a brand-new custom entry, not linked to the default template.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I mark an item as done?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>Tap the <strong>⬜ checkbox</strong> on the left side of any item row. It changes to ✅ and the item name gets a strikethrough. Tap it again to mark it pending.</p>
+            <p>Use the <strong>Done</strong> filter chip at the top to see only items you've already checked off, including a running price total if prices are set.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I edit an item's details?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>Tap anywhere on an item row (not the checkbox or delete button) to select it. A <strong>Details</strong> button appears in the bottom-right corner — tap it to open the detail panel.</p>
+            <p>The panel has two tabs:</p>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><strong>Details</strong> — edit name, quantity, and unit. Changes save automatically a moment after you stop typing.</li>
+              <li><strong>Advanced</strong> — change category, store assignment, and price. These save as soon as you change the selection.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I delete an item?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>Tap the <strong>✕</strong> button on the right side of any item row. The item is removed immediately. Deletion is permanent — there is no undo.</p>
+            <p>Deleting all your items will leave the list empty. Refreshing the page will <em>not</em> restore deleted items automatically. Use <strong>Import Default Items</strong> in Settings if you want to start fresh from the default list.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- Filtering -->
+    <section class="space-y-3">
+      <h3 class="text-base font-semibold uppercase tracking-widest text-slate-400">Filtering &amp; Searching</h3>
+      <div class="rounded-2xl border border-white/70 bg-white/85 divide-y divide-gray-100 shadow-sm overflow-hidden">
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Category chips (All, Pending, Done)</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>The scrollable chip bar below the header shows one chip per category that's actually in use on your list, plus built-in <strong>All</strong>, <strong>Pending</strong>, and <strong>Done</strong> chips.</p>
+            <ul class="list-disc pl-5 space-y-1">
+              <li><strong>All</strong> — show every item regardless of status.</li>
+              <li><strong>Pending</strong> — show only unchecked items.</li>
+              <li><strong>Done</strong> — show only checked items; a price total appears when prices are set.</li>
+              <li>Any named category — show only items in that category.</li>
+            </ul>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Filtering by store</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>The <strong>🛒 store filter button</strong> (top-right of the filter bar) opens a popover listing all your stores. Select one to show only items assigned to that store. A tinted pill appears below the filter bar showing the active store. Tap <strong>Clear</strong> or select <strong>All stores</strong> to remove the filter.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Text search</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>Type in the <strong>Filter items…</strong> text box to instantly narrow the list to items whose name contains your search term. Category and store filters stack with the text search.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="space-y-3">
+      <h3 class="text-base font-semibold uppercase tracking-widest text-slate-400">Settings</h3>
+      <div class="rounded-2xl border border-white/70 bg-white/85 divide-y divide-gray-100 shadow-sm overflow-hidden">
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I open Settings?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>Tap the <strong>⚙ gear icon</strong> at the left end of the filter bar. A sheet slides up from the bottom. Tap outside the sheet or tap the close button to dismiss it.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Changing the color theme</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>In Settings, choose from four themes: <strong>Meadow</strong> (green), <strong>Ocean</strong> (blue), <strong>Sunset</strong> (orange), and <strong>Berry</strong> (pink). The selection is saved in your browser and restored automatically on your next visit.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Importing the default grocery list</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600 space-y-2">
+            <p>Tap <strong>Import Default Items</strong> in Settings to pull in the administrator's curated grocery list. The import behaves as follows:</p>
+            <ul class="list-disc pl-5 space-y-1">
+              <li>Items in the default list that you don't have yet are <strong>created</strong> on your list.</li>
+              <li>Items you already imported previously (linked to a default template) are <strong>reset</strong> to the current default values — name, quantity, unit, category, and store.</li>
+              <li>Items you created yourself whose name happens to match a default are <strong>linked</strong> to that template but your data (quantity, unit, etc.) is <strong>preserved</strong>.</li>
+              <li>Purely custom items with names that don't match any default are <strong>left untouched</strong>.</li>
+            </ul>
+            <p>This means running the import multiple times is safe — it won't duplicate items or erase your custom entries.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Changing your password</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>In Settings, scroll down to <strong>Change Password</strong>. Enter your current password, then your new password twice (minimum 8 characters), and tap <strong>Update Password</strong>. Use the <span class="kbd">Show</span> toggle to reveal characters as you type.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section class="space-y-3">
+      <h3 class="text-base font-semibold uppercase tracking-widest text-slate-400">Account</h3>
+      <div class="rounded-2xl border border-white/70 bg-white/85 divide-y divide-gray-100 shadow-sm overflow-hidden">
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">How do I sign out?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>Tap <strong>Log out</strong> in the top-right corner of the header. You will be taken back to the sign-in page. Your list is private and only visible when you are signed in.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">Is my list private?</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>Yes. Each account has its own isolated list. Other users cannot see your items, stores, or prices. Administrators can manage the shared default templates and category/store options, but cannot view or modify your personal list items.</p>
+          </div>
+        </details>
+
+        <details class="group">
+          <summary class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-gray-50 transition-colors">
+            <span class="text-sm font-semibold text-slate-800">I forgot my password</span>
+            <svg class="chevron h-4 w-4 flex-shrink-0 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+          </summary>
+          <div class="px-5 pb-5 pt-2 text-sm leading-6 text-slate-600">
+            <p>There is no self-service password reset. Contact your administrator — they can generate a temporary password that you can use to sign in and then change immediately from Settings.</p>
+          </div>
+        </details>
+
+      </div>
+    </section>
+
+  </main>
+
+</body>
+</html>

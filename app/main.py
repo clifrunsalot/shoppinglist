@@ -906,6 +906,12 @@ def create_app(config_overrides=None):
     def index():
         return render_template('index.html', initial_theme=get_user_theme(current_user))
 
+    @app.route('/help')
+    @login_required
+    def help_page():
+        ref = request.args.get('ref', '')
+        return render_template('help.html', ref=ref)
+
     @app.route('/admin')
     @login_required
     @admin_required

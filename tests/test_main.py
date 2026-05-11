@@ -185,6 +185,35 @@ def test_index_redirects_to_login_when_unauthenticated(client):
     assert response.headers['Location'].endswith('/login?next=/')
 
 
+def test_help_page_renders_for_authenticated_user(auth_client):
+    response = auth_client.get('/help')
+
+    assert response.status_code == 200
+    assert b'Help' in response.data
+    assert b'Back to your list' not in response.data
+
+
+def test_help_page_redirects_to_login_when_unauthenticated(client):
+    response = client.get('/help')
+
+    assert response.status_code == 302
+    assert '/login' in response.headers['Location']
+
+
+def test_help_page_back_button_points_to_index_by_default(auth_client):
+    response = auth_client.get('/help')
+
+    assert b'?settings=1' not in response.data
+    assert b'url_for' not in response.data  # rendered, not raw Jinja
+
+
+def test_help_page_back_button_includes_settings_param_when_ref_settings(auth_client):
+    response = auth_client.get('/help?ref=settings')
+
+    assert response.status_code == 200
+    assert b'?settings=1' in response.data
+
+
 def test_api_requires_authentication_json_401(client):
     response = client.get('/api/items')
 

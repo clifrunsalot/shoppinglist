@@ -508,6 +508,16 @@
             </div>
           </div>
 
+          <div class="border-t pt-6 text-center">
+            <a href="{{ url_for('help_page', ref='settings') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01"/>
+              </svg>
+              Help &amp; User Guide
+            </a>
+          </div>
+
         </div>
       </div>
     </div>
@@ -938,6 +948,10 @@
         init() {
           this.restoreActiveFilter();
           this.syncThemeColor();
+          if (new URLSearchParams(window.location.search).get('settings') === '1') {
+            this.showSettings = true;
+            history.replaceState(null, '', window.location.pathname);
+          }
           document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.showSettings) this.showSettings = false;
             if (e.key === 'Escape' && this.panelOpen) this.closePanel();
