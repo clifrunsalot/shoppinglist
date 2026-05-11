@@ -634,33 +634,87 @@
               <button data-testid="panel-close" @click="closePanel()" class="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 transition hover:border-gray-300 hover:text-gray-700">Close</button>
             </div>
 
-            <div class="flex-1 overflow-y-auto px-4 py-4">
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <input x-model="newItem.name" placeholder="Item name *" @keydown.enter="addItem()"
-                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2" />
-                <input x-model="newItem.quantity" placeholder="Qty (e.g. 2)" type="number" min="0" step="0.1"
-                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-                <input x-model="newItem.unit" placeholder="Unit (lbs, oz, each…)"
-                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
-                <select data-testid="new-item-category-select" x-model="newItem.category"
-                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm">
-                  <option value="">No category</option>
-                  <template x-for="category in categories" :key="category.id">
-                    <option :value="category.name" x-text="category.name"></option>
-                  </template>
-                </select>
-                <select x-model.number="newItem.store_id"
-                  class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2">
-                  <option :value="null">Select a store *</option>
-                  <template x-for="store in stores" :key="store.id">
-                    <option :value="store.id" x-text="store.name"></option>
-                  </template>
-                </select>
-              </div>
-              <button @click="addItem()" :disabled="!newItem.name.trim() || !newItem.store_id" class="theme-primary mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40">
-                + Add to List
-              </button>
+            <!-- Tab bar -->
+            <div class="flex border-b border-gray-200">
+              <button data-testid="add-tab-new" @click="addTab = 'new'"
+                :class="addTab === 'new' ? 'border-b-2 border-current text-gray-900 theme-tab-active' : 'text-gray-400 hover:text-gray-600'"
+                class="flex-1 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] transition">New Item</button>
+              <button data-testid="add-tab-defaults" @click="addTab = 'defaults'; loadDefaultItems()"
+                :class="addTab === 'defaults' ? 'border-b-2 border-current text-gray-900 theme-tab-active' : 'text-gray-400 hover:text-gray-600'"
+                class="flex-1 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] transition">From Defaults</button>
             </div>
+
+            <!-- New Item form -->
+            <template x-if="addTab === 'new'">
+              <div class="flex-1 overflow-y-auto px-4 py-4">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <input x-model="newItem.name" placeholder="Item name *" @keydown.enter="addItem()"
+                    class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2" />
+                  <input x-model="newItem.quantity" placeholder="Qty (e.g. 2)" type="number" min="0" step="0.1"
+                    class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+                  <input x-model="newItem.unit" placeholder="Unit (lbs, oz, each…)"
+                    class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+                  <select data-testid="new-item-category-select" x-model="newItem.category"
+                    class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm">
+                    <option value="">No category</option>
+                    <template x-for="category in categories" :key="category.id">
+                      <option :value="category.name" x-text="category.name"></option>
+                    </template>
+                  </select>
+                  <select x-model.number="newItem.store_id"
+                    class="theme-field rounded-xl border border-gray-200 px-3 py-2 text-sm sm:col-span-2">
+                    <option :value="null">Select a store *</option>
+                    <template x-for="store in stores" :key="store.id">
+                      <option :value="store.id" x-text="store.name"></option>
+                    </template>
+                  </select>
+                </div>
+                <button @click="addItem()" :disabled="!newItem.name.trim() || !newItem.store_id" class="theme-primary mt-4 w-full rounded-xl py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40">
+                  + Add to List
+                </button>
+              </div>
+            </template>
+
+            <!-- From Defaults tab -->
+            <template x-if="addTab === 'defaults'">
+              <div class="flex min-h-0 flex-1 flex-col">
+                <div class="px-4 pt-3 pb-2">
+                  <input x-model="defaultItemSearch" placeholder="Search defaults…"
+                    class="theme-field w-full rounded-xl border border-gray-200 px-3 py-2 text-sm" />
+                </div>
+                <div class="flex-1 overflow-y-auto px-4 pb-4">
+                  <template x-if="defaultItemsLoading">
+                    <p class="py-6 text-center text-sm text-gray-400">Loading…</p>
+                  </template>
+                  <template x-if="!defaultItemsLoading && defaultItems.length === 0">
+                    <p class="py-6 text-center text-sm text-gray-400">No default items have been set up yet.</p>
+                  </template>
+                  <template x-if="!defaultItemsLoading && defaultItems.length > 0">
+                    <ul class="divide-y divide-gray-100">
+                      <template x-for="dt in filteredDefaultItems()" :key="dt.id">
+                        <li>
+                          <button @click="prefillFromDefault(dt)"
+                            :class="dt.alreadyAdded ? 'opacity-60' : ''"
+                            class="w-full rounded-xl px-3 py-3 text-left transition hover:bg-gray-50 active:bg-gray-100">
+                            <div class="flex items-center justify-between gap-2">
+                              <p class="text-sm font-medium text-gray-900" x-text="dt.name"></p>
+                              <template x-if="dt.alreadyAdded">
+                                <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">In list</span>
+                              </template>
+                            </div>
+                            <p class="mt-0.5 text-xs text-gray-400"
+                              x-text="[dt.quantity && dt.quantity !== 1 ? dt.quantity + (dt.unit ? ' ' + dt.unit : '') : (dt.unit || null), dt.category].filter(Boolean).join(' · ') || 'No details'"></p>
+                          </button>
+                        </li>
+                      </template>
+                      <template x-if="filteredDefaultItems().length === 0">
+                        <li class="py-6 text-center text-sm text-gray-400">No matches.</li>
+                      </template>
+                    </ul>
+                  </template>
+                </div>
+              </div>
+            </template>
           </div>
         </template>
       </div>
@@ -695,7 +749,11 @@
         detailTab: 'detail',
         panelOpen: false,
         panelMode: null,
-        newItem: { name: '', quantity: '', unit: '', category: '', store_id: null },
+        addTab: 'new',
+        newItem: { name: '', quantity: '', unit: '', category: '', store_id: null, template_item_id: null },
+        defaultItems: [],
+        defaultItemSearch: '',
+        defaultItemsLoading: false,
         newStoreName: '',
         passwordForm: { current_password: '', new_password: '', confirmation_password: '' },
         showCurrentPassword: false,
@@ -983,6 +1041,9 @@
           await this.flushSelectedItemChanges();
           this.selectedItem = null;
           this.panelMode = 'add';
+          this.addTab = 'new';
+          this.defaultItemSearch = '';
+          this.newItem = { name: '', quantity: '', unit: '', category: '', store_id: null, template_item_id: null, _templateName: '' };
           this.panelOpen = true;
           this.showSettings = false;
         },
@@ -1714,23 +1775,76 @@
           this.stageItemChanges(item.id, { checked: !item.checked }, { immediate: true });
         },
 
+        availableDefaultItems() {
+          const usedIds = new Set(this.items.map(i => i.template_item_id).filter(Boolean));
+          return (this.defaultItems || []).map(dt => ({ ...dt, alreadyAdded: usedIds.has(dt.id) }));
+        },
+
+        filteredDefaultItems() {
+          const q = this.defaultItemSearch.trim().toLowerCase();
+          const all = this.availableDefaultItems();
+          if (!q) return all;
+          return all.filter(dt => dt.name.toLowerCase().includes(q));
+        },
+
+        async loadDefaultItems() {
+          if (this.defaultItems.length > 0) return;
+          this.defaultItemsLoading = true;
+          try {
+            this.defaultItems = await this.requestJson('/api/default-items', {}, 'Unable to load default items.');
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            this.defaultItemsLoading = false;
+          }
+        },
+
+        prefillFromDefault(dt) {
+          // Map store_template_id -> user store_id
+          let storeId = null;
+          if (dt.store_template_id != null) {
+            // stores have a template_store_id field if populated via default stores
+            const matched = this.stores.find(s => s.template_store_id === dt.store_template_id);
+            if (matched) storeId = matched.id;
+          }
+          this.newItem = {
+            name: dt.name,
+            quantity: dt.quantity !== 1 ? String(dt.quantity) : '',
+            unit: dt.unit || '',
+            category: dt.category || '',
+            store_id: storeId,
+            // Don't carry the template link if it's already used — user must rename it.
+            template_item_id: dt.alreadyAdded ? null : dt.id,
+            _templateName: dt.alreadyAdded ? '' : dt.name,
+          };
+          this.addTab = 'new';
+        },
+
         async addItem() {
           if (!this.newItem.name.trim() || !this.newItem.store_id) return;
           try {
+            const submittedName = this.newItem.name.trim();
+            // Only keep the template link when the name is unchanged from the template.
+            // If the user renamed the pre-filled item, treat it as a plain new item.
+            const templateId = (this.newItem.template_item_id && submittedName === (this.newItem._templateName || '').trim())
+              ? this.newItem.template_item_id
+              : null;
             const created = await this.requestJson('/api/items', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                name: this.newItem.name.trim(),
+                name: submittedName,
                 quantity: this.newItem.quantity ? parseFloat(this.newItem.quantity) : 1,
                 unit: this.newItem.unit || null,
                 category: this.newItem.category || null,
                 store_id: this.newItem.store_id,
                 price: 0,
+                template_item_id: templateId,
               }),
             }, 'Unable to add item.');
             this.items.push(created);
-            this.newItem = { name: '', quantity: '', unit: '', category: '', store_id: null };
+            this.newItem = { name: '', quantity: '', unit: '', category: '', store_id: null, template_item_id: null, _templateName: '' };
+            this.addTab = 'new';
             this.panelOpen = false;
             this.panelMode = null;
           } catch (err) {

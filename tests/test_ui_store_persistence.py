@@ -449,7 +449,7 @@ def test_desktop_checkbox_left_edge_click_toggles_item(browser_page, live_server
     expect(page.get_by_test_id('item-detail-panel')).to_have_count(0)
 
 
-def test_settings_import_default_items_overwrites_same_name_item(browser_page, live_server, seeded_settings_import_default_items_data):
+def test_settings_import_default_items_links_same_name_item_without_overwrite(browser_page, live_server, seeded_settings_import_default_items_data):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
     page = browser_page
@@ -464,6 +464,7 @@ def test_settings_import_default_items_overwrites_same_name_item(browser_page, l
 
     open_settings(page)
     page.get_by_test_id('settings-import-default-items').click()
+    # Item is counted as "overwritten" (linked to template), even though user data is preserved
     expect(page.get_by_test_id('settings-import-default-items-message')).to_contain_text('Default items imported: 1 overwritten.')
     page.get_by_role('button', name='Close settings').nth(1).click()
 
@@ -471,12 +472,9 @@ def test_settings_import_default_items_overwrites_same_name_item(browser_page, l
     apples_row.click()
     open_detail_panel(page)
 
-    expect(page.get_by_test_id('detail-quantity-input')).to_have_value('3')
-    expect(page.get_by_test_id('detail-unit-input')).to_have_value('bag')
-
-    page.get_by_test_id('detail-tab-advanced').click()
-    expect(page.get_by_test_id('detail-category-select')).to_have_value(seeded_settings_import_default_items_data['category_name'])
-    expect(page.get_by_test_id('detail-store-select')).not_to_have_value('')
+    # User's original data is preserved — import only linked the item to the template
+    expect(page.get_by_test_id('detail-quantity-input')).to_have_value('9')
+    expect(page.get_by_test_id('detail-unit-input')).to_have_value('crate')
 
 
 def test_detail_sheet_stays_open_after_multiple_edits(browser_page, live_server, seeded_store_persistence_data):

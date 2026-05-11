@@ -219,6 +219,7 @@ def test_items_api_creates_and_lists_items(auth_client, app):
         'store_id': None,
         'price': 2.35,
         'checked': False,
+        'template_item_id': None,
         'created_at': response.get_json()['created_at'],
     }
     assert response.get_json()['created_at'] is not None
@@ -246,6 +247,121 @@ def test_items_api_rejects_duplicate_name_on_create(auth_client, auth_user, app)
 
     assert response.status_code == 409
     assert response.get_json() == {'error': 'item already exists'}
+
+
+def test_items_api_creates_item_from_default_template(auth_client, auth_user, app):
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Milk', quantity=1)
+        db.session.add(template)
+        db.session.commit()
+        template_id = template.id
+
+    response = auth_client.post('/api/items', json={'name': 'Milk', 'template_item_id': template_id})
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data['name'] == 'Milk'
+    assert data['template_item_id'] == template_id
+
+
+def test_items_api_rejects_already_claimed_template_id_on_create(auth_client, auth_user, app):
+    """Backend guard: even if the frontend drops template_item_id for 'in list' items,
+    a request that still carries an already-claimed template_item_id is rejected."""
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Milk', quantity=1)
+        db.session.add(template)
+        db.session.flush()
+        existing = Item(name='Milk', price=Decimal('0.00'), user_id=auth_user['id'], template_item_id=template.id)
+        db.session.add(existing)
+        db.session.commit()
+        template_id = template.id
+
+    response = auth_client.post('/api/items', json={'name': 'Whole Milk', 'template_item_id': template_id})
+
+    assert response.status_code == 409
+    assert response.get_json() == {'error': 'item already exists'}
+
+
+def test_items_api_creates_renamed_item_without_template_link(auth_client, auth_user, app):
+    """Simulates the user changing the name after pre-filling from defaults (frontend clears template_item_id)."""
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Milk', quantity=1)
+        db.session.add(template)
+        db.session.flush()
+        existing = Item(name='Milk', price=Decimal('0.00'), user_id=auth_user['id'], template_item_id=template.id)
+        db.session.add(existing)
+        db.session.commit()
+
+    response = auth_client.post('/api/items', json={'name': 'Whole Milk'})
+
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data['name'] == 'Whole Milk'
+    assert data['template_item_id'] is None
+
+
+def test_items_api_rejects_duplicate_name_when_selecting_in_list_item(auth_client, auth_user, app):
+    """Simulates selecting an 'In list' default without renaming it.
+    The frontend clears template_item_id for already-added items, so the backend
+    catches the collision via the name-duplicate check rather than the template check."""
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Milk', quantity=1)
+        db.session.add(template)
+        db.session.flush()
+        existing = Item(name='Milk', price=Decimal('0.00'), user_id=auth_user['id'], template_item_id=template.id)
+        db.session.add(existing)
+        db.session.commit()
+
+    # No template_item_id sent — matches what the frontend does for 'in list' items.
+    response = auth_client.post('/api/items', json={'name': 'Milk'})
+
+    assert response.status_code == 409
+    assert response.get_json() == {'error': 'item already exists'}
+
+
+def test_default_items_api_returns_sorted_templates(auth_client, auth_user, app):
+    with app.app_context():
+        store_tpl = main_module.DefaultStoreTemplate(name='Market', sort_order=0)
+        db.session.add(store_tpl)
+        db.session.flush()
+        db.session.add_all([
+            main_module.DefaultItemTemplate(name='Zucchini', quantity=2, unit='each', category=None, store_template_id=None),
+            main_module.DefaultItemTemplate(name='Apples', quantity=1, unit='lb', category='Produce', store_template_id=store_tpl.id),
+        ])
+        db.session.commit()
+
+    response = auth_client.get('/api/default-items')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == 2
+    assert data[0]['name'] == 'Apples'
+    assert data[0]['quantity'] == 1
+    assert data[0]['unit'] == 'lb'
+    assert data[0]['category'] == 'Produce'
+    assert data[0]['store_template_id'] == data[0]['store_template_id']  # value present
+    assert data[1]['name'] == 'Zucchini'
+    assert set(data[0].keys()) == {'id', 'name', 'quantity', 'unit', 'category', 'store_template_id'}
+
+
+def test_default_items_api_returns_empty_list_when_no_templates(auth_client):
+    response = auth_client.get('/api/default-items')
+
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+
+def test_default_items_api_requires_authentication(client):
+    response = client.get('/api/default-items')
+
+    assert response.status_code in (401, 302)
+
+
+def test_items_api_rejects_unknown_template_item_id(auth_client):
+    response = auth_client.post('/api/items', json={'name': 'Ghost Item', 'template_item_id': 99999})
+
+    assert response.status_code == 404
+    assert response.get_json() == {'error': 'template_item_id does not reference a known template'}
 
 
 def test_items_api_rejects_non_json_requests(auth_client):
@@ -470,10 +586,11 @@ def test_stores_api_returns_admin_managed_catalog_only(auth_client, auth_user, a
     response = auth_client.get('/api/stores')
 
     assert response.status_code == 200
-    assert response.get_json() == [
-        {'id': response.get_json()[0]['id'], 'name': 'Aldi'},
-        {'id': response.get_json()[1]['id'], 'name': 'Live Store Probe'},
-        {'id': response.get_json()[2]['id'], 'name': 'unknown'},
+    data = response.get_json()
+    assert [{'id': s['id'], 'name': s['name']} for s in data] == [
+        {'id': data[0]['id'], 'name': 'Aldi'},
+        {'id': data[1]['id'], 'name': 'Live Store Probe'},
+        {'id': data[2]['id'], 'name': 'unknown'},
     ]
 
     with app.app_context():
@@ -501,9 +618,10 @@ def test_stores_api_backfills_missing_default_stores_for_existing_user(auth_clie
     response = auth_client.get('/api/stores')
 
     assert response.status_code == 200
-    assert response.get_json() == [
-        {'id': response.get_json()[0]['id'], 'name': 'Aldi'},
-        {'id': response.get_json()[1]['id'], 'name': 'Live Probe Store'},
+    data = response.get_json()
+    assert [{'id': s['id'], 'name': s['name']} for s in data] == [
+        {'id': data[0]['id'], 'name': 'Aldi'},
+        {'id': data[1]['id'], 'name': 'Live Probe Store'},
     ]
 
     with app.app_context():
@@ -661,7 +779,8 @@ def test_password_change_rejects_short_password(auth_client, auth_user):
     assert response.get_json() == {'error': 'new password must be at least 8 characters long'}
 
 
-def test_import_default_items_api_overwrites_existing_same_name_items(auth_client, auth_user, app):
+def test_import_default_items_api_links_unlinked_same_name_item_without_overwriting(auth_client, auth_user, app):
+    """Import links a user's existing same-name item to the template but preserves the user's data."""
     with app.app_context():
         default_store = main_module.DefaultStoreTemplate(name='Pantry', sort_order=0)
         db.session.add(default_store)
@@ -688,7 +807,6 @@ def test_import_default_items_api_overwrites_existing_same_name_items(auth_clien
         db.session.commit()
         existing_item_id = existing_item.id
         template_item_id = template_item.id
-        default_store_id = default_store.id
 
     response = auth_client.post('/api/account/import-default-items', json={})
 
@@ -703,20 +821,89 @@ def test_import_default_items_api_overwrites_existing_same_name_items(auth_clien
         items = Item.query.filter_by(user_id=auth_user['id']).order_by(Item.id.asc()).all()
         assert len(items) == 1
         assert items[0].id == existing_item_id
-        assert items[0].name == 'Apples'
-        assert items[0].quantity == 3
-        assert items[0].unit == 'bag'
-        assert items[0].category == 'Produce'
-        assert items[0].sort_order == 10
-        assert items[0].price == Decimal('0.00')
-        assert items[0].checked is False
+        # User data is preserved — only template_item_id is set (link-only)
+        assert items[0].name == ' apples '
+        assert items[0].quantity == 9
+        assert items[0].unit == 'crate'
+        assert items[0].category == 'Snacks'
+        assert items[0].sort_order == 90
+        assert items[0].price == Decimal('4.50')
+        assert items[0].checked is True
         assert items[0].template_item_id == template_item_id
-        copied_store = Store.query.filter_by(user_id=auth_user['id'], template_store_id=default_store_id).first()
-        assert copied_store is not None
-        assert items[0].store_id == copied_store.id
         audit_entry = AuditLog.query.filter_by(action='user.default_items_imported', target_id=auth_user['id']).first()
         assert audit_entry is not None
         assert str(existing_item_id) in (audit_entry.details or '')
+
+
+def test_import_default_items_api_preserves_custom_item_renamed_from_default(auth_client, auth_user, app):
+    """Regression: custom item added by renaming a default must survive import of all defaults."""
+    with app.app_context():
+        template_milk = main_module.DefaultItemTemplate(name='Milk', quantity=1, unit='gal', category='Dairy', sort_order=10)
+        template_eggs = main_module.DefaultItemTemplate(name='Eggs', quantity=12, unit='ct', category='Dairy', sort_order=20)
+        db.session.add_all([template_milk, template_eggs])
+        db.session.commit()
+
+    # User adds a custom item by renaming "Milk" → "Oat Milk" (template_item_id withheld)
+    create_resp = auth_client.post('/api/items', json={
+        'name': 'Oat Milk', 'quantity': 2, 'unit': 'carton',
+    })
+    assert create_resp.status_code == 201
+    custom_item_id = create_resp.get_json()['id']
+
+    # Import all defaults
+    import_resp = auth_client.post('/api/account/import-default-items', json={})
+    assert import_resp.status_code == 200
+
+    list_resp = auth_client.get('/api/items')
+    assert list_resp.status_code == 200
+    items = list_resp.get_json()
+    names = [i['name'] for i in items]
+
+    # Custom item must still be present
+    assert 'Oat Milk' in names, 'Custom renamed item must survive import'
+    # Both defaults must also be present
+    assert 'Milk' in names
+    assert 'Eggs' in names
+    # Exactly 3 items — no duplicates
+    assert len(items) == 3
+
+    with app.app_context():
+        custom = db.session.get(Item, custom_item_id)
+        assert custom is not None
+        assert custom.name == 'Oat Milk'
+        assert custom.template_item_id is None  # custom item retains no template link
+
+
+def test_import_default_items_api_resets_previously_linked_item_to_template_defaults(auth_client, auth_user, app):
+    """Items that were previously imported (template_item_id set) are fully reset on re-import."""
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Butter', quantity=1, unit='lb', category='Dairy', sort_order=10)
+        db.session.add(template)
+        db.session.flush()
+        # Simulate a previously imported item that the user modified
+        linked_item = Item(
+            name='Butter', quantity=5, unit='kg', category='Snacks',
+            sort_order=99, price=Decimal('9.99'), checked=True,
+            user_id=auth_user['id'], template_item_id=template.id,
+        )
+        db.session.add(linked_item)
+        db.session.commit()
+        item_id = linked_item.id
+        template_id = template.id
+
+    response = auth_client.post('/api/account/import-default-items', json={})
+    assert response.status_code == 200
+
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        # Template-linked item IS fully reset to template defaults
+        assert item.name == 'Butter'
+        assert item.quantity == 1
+        assert item.unit == 'lb'
+        assert item.category == 'Dairy'
+        assert item.price == Decimal('0.00')
+        assert item.checked is False
+        assert item.template_item_id == template_id
 
 
 def test_import_default_items_api_applies_alphabetical_sort_order(auth_client, auth_user, app):
@@ -1041,25 +1228,27 @@ def test_admin_default_items_page_lists_items_alphabetically(admin_client, app):
     assert default_items_section.index(b'bananas') < default_items_section.index(b'Zulu Apples')
 
 
-def test_items_api_backfill_links_existing_same_name_item_instead_of_creating_duplicate(auth_client, auth_user, app):
+def test_items_api_does_not_auto_link_same_name_item_on_list(auth_client, auth_user, app):
+    """GET /api/items no longer auto-links items to templates; that happens via the import endpoint."""
     with app.app_context():
         existing_item = Item(name='Oranges', quantity=5, unit='bag', category='Produce', price=Decimal('4.50'), user_id=auth_user['id'])
         template_item = main_module.DefaultItemTemplate(name='oranges', quantity=3, unit='bag', category='Produce', sort_order=15)
         db.session.add_all([existing_item, template_item])
         db.session.commit()
         existing_item_id = existing_item.id
-        template_item_id = template_item.id
 
     response = auth_client.get('/api/items')
 
     assert response.status_code == 200
-    assert [item['name'] for item in response.get_json()].count('Oranges') == 1
+    data = response.get_json()
+    assert [item['name'] for item in data].count('Oranges') == 1
 
     with app.app_context():
         items = Item.query.filter_by(user_id=auth_user['id']).order_by(Item.id.asc()).all()
         assert len(items) == 1
         assert items[0].id == existing_item_id
-        assert items[0].template_item_id == template_item_id
+        # template_item_id is NOT auto-linked on GET; user data is preserved as-is
+        assert items[0].template_item_id is None
         assert items[0].quantity == 5
 
 
@@ -1084,6 +1273,38 @@ def test_items_api_list_deduplicates_existing_user_duplicates(auth_client, auth_
         items = Item.query.filter_by(user_id=auth_user['id']).order_by(Item.id.asc()).all()
         assert len(items) == 1
         assert items[0].template_item_id == template_item_id
+
+
+def test_items_api_does_not_recreate_items_deleted_by_user(auth_client, auth_user, app):
+    """Regression: deleting all items and refreshing must not silently restore them."""
+    with app.app_context():
+        template = main_module.DefaultItemTemplate(name='Milk', quantity=1, unit='gal', category='Dairy', sort_order=10)
+        db.session.add(template)
+        db.session.flush()
+        item = Item(name='Milk', quantity=1, unit='gal', category='Dairy', price=Decimal('0.00'),
+                    user_id=auth_user['id'], template_item_id=template.id)
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    # Confirm item exists
+    response = auth_client.get('/api/items')
+    assert response.status_code == 200
+    assert any(i['name'] == 'Milk' for i in response.get_json())
+
+    # Delete the item
+    delete_response = auth_client.delete(f'/api/items/{item_id}')
+    assert delete_response.status_code in (200, 204)
+
+    # Simulate browser refresh — item must not reappear
+    response = auth_client.get('/api/items')
+    assert response.status_code == 200
+    assert not any(i['name'] == 'Milk' for i in response.get_json())
+
+    # Second refresh — list must not grow
+    response2 = auth_client.get('/api/items')
+    assert response2.status_code == 200
+    assert response2.get_json() == response.get_json()
 
 
 def test_admin_dashboard_deduplicates_duplicate_default_item_templates(admin_client, auth_user, app):
@@ -1234,7 +1455,8 @@ def test_admin_delete_default_store_moves_items_to_unknown_store(admin_client, c
         assert str(copied_store_id) in (audit_entry.details or '')
 
 
-def test_items_api_backfills_missing_default_items_for_existing_user(auth_client, auth_user, app):
+def test_items_api_does_not_backfill_missing_default_items_on_list(auth_client, auth_user, app):
+    """GET /api/items does not auto-create items from templates; deleted items stay deleted."""
     with app.app_context():
         default_store = main_module.DefaultStoreTemplate(name='Pantry', sort_order=0)
         db.session.add(default_store)
@@ -1245,17 +1467,16 @@ def test_items_api_backfills_missing_default_items_for_existing_user(auth_client
         db.session.add(template_item)
         db.session.commit()
         template_item_id = template_item.id
-        copied_store_id = copied_store.id
 
     response = auth_client.get('/api/items')
 
     assert response.status_code == 200
-    assert any(item['name'] == 'Oranges' for item in response.get_json())
+    # No item should be auto-created from the template
+    assert not any(item['name'] == 'Oranges' for item in response.get_json())
 
     with app.app_context():
         merged_item = Item.query.filter_by(user_id=auth_user['id'], template_item_id=template_item_id).first()
-        assert merged_item is not None
-        assert merged_item.store_id == copied_store_id
+        assert merged_item is None
 
 
 def test_admin_dashboard_preserves_scroll_for_default_store_forms(admin_client):

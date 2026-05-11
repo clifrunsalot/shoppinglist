@@ -599,11 +599,14 @@ def create_app(config_overrides=None):
                     store_id = store.id
 
             item = Item.query.filter_by(user_id=user.id, template_item_id=template.id).first()
+            name_matched_unlinked = False
             if item is None:
                 item = Item.query.filter(
                     Item.user_id == user.id,
+                    Item.template_item_id == None,
                     db.func.lower(db.func.trim(Item.name)) == normalized_template_name,
                 ).first()
+                name_matched_unlinked = item is not None
 
             if item is None:
                 item = Item(
@@ -623,15 +626,23 @@ def create_app(config_overrides=None):
                 created_items.append(item)
                 continue
 
-            item.name = template.name
-            item.quantity = template.quantity
-            item.unit = template.unit
-            item.category = template.category
-            item.sort_order = imported_sort_order
-            item.price = Decimal('0.00')
-            item.checked = False
-            item.store_id = store_id
-            item.template_item_id = template.id
+            if name_matched_unlinked:
+                # User-created item whose name matches a template. Preserve the
+                # user's data and only link it to the template so that no
+                # duplicate is created.
+                item.template_item_id = template.id
+            else:
+                # Item was previously imported from this template; reset it to
+                # the current template defaults.
+                item.name = template.name
+                item.quantity = template.quantity
+                item.unit = template.unit
+                item.category = template.category
+                item.sort_order = imported_sort_order
+                item.price = Decimal('0.00')
+                item.checked = False
+                item.store_id = store_id
+                item.template_item_id = template.id
             overwritten_items.append(item)
 
         if created_items or overwritten_items or changed:
@@ -660,6 +671,7 @@ def create_app(config_overrides=None):
             'store_id': item.store_id,
             'price': float(item.price or 0),
             'checked': item.checked,
+            'template_item_id': item.template_item_id,
             'created_at': item.created_at.isoformat() if item.created_at else None,
         }
 
@@ -667,6 +679,7 @@ def create_app(config_overrides=None):
         return {
             'id': store.id,
             'name': store.name,
+            'template_store_id': store.template_store_id,
         }
 
     def serialize_category(category):
@@ -1456,7 +1469,9 @@ def create_app(config_overrides=None):
     @login_required
     def api_items_list():
         ensure_user_has_default_stores(current_user)
-        ensure_user_has_default_items(current_user)
+        changed = deduplicate_user_items_for_user(current_user.id)
+        if changed:
+            db.session.commit()
         items = Item.query.filter_by(user_id=current_user.id).order_by(db.func.lower(Item.name).asc(), Item.id.asc()).all()
         return jsonify([serialize(item) for item in items])
 
@@ -1487,9 +1502,20 @@ def create_app(config_overrides=None):
         if error:
             return error
 
+        template_item_id = data.get('template_item_id')
+        if template_item_id is not None:
+            try:
+                template_item_id = int(template_item_id)
+            except (TypeError, ValueError):
+                return error_response('template_item_id must be an integer', 400)
+            if DefaultItemTemplate.query.get(template_item_id) is None:
+                return error_response('template_item_id does not reference a known template', 404)
+            if Item.query.filter_by(user_id=current_user.id, template_item_id=template_item_id).first() is not None:
+                return error_response('item already exists', 409)
+
         next_sort_order = (db.session.query(db.func.max(Item.sort_order)).filter_by(user_id=current_user.id).scalar() or 0) + 10
         price = parse_price(data.get('price')) if data else None
-        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id)
+        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id, template_item_id=template_item_id)
         db.session.add(item)
         db.session.commit()
         return jsonify(serialize(item)), 201
@@ -1587,6 +1613,25 @@ def create_app(config_overrides=None):
     @login_required
     def api_categories_delete(category_id):
         return categories_are_admin_managed_error()
+
+    @app.route('/api/default-items', methods=['GET'])
+    @login_required
+    def api_default_items_list():
+        templates = DefaultItemTemplate.query.order_by(
+            db.func.lower(DefaultItemTemplate.name).asc(),
+            DefaultItemTemplate.id.asc(),
+        ).all()
+        return jsonify([
+            {
+                'id': t.id,
+                'name': t.name,
+                'quantity': t.quantity,
+                'unit': t.unit,
+                'category': t.category,
+                'store_template_id': t.store_template_id,
+            }
+            for t in templates
+        ])
 
     @app.route('/api/preferences/theme', methods=['PATCH'])
     @login_required
