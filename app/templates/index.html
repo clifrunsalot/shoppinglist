@@ -595,6 +595,20 @@
             </div>
 
             <div data-testid="item-detail-panel" class="flex min-h-0 flex-1 flex-col">
+              <!-- Conflict banner: save was rejected (409) -->
+              <template x-if="itemConflictMessage">
+                <div class="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <span class="flex-1" x-text="itemConflictMessage"></span>
+                  <button @click="itemConflictMessage = ''" class="shrink-0 font-semibold hover:text-red-900">&times;</button>
+                </div>
+              </template>
+              <!-- Stale banner: background poll detected a newer version on server -->
+              <template x-if="selectedItemOutdated && !itemConflictMessage">
+                <div class="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  <span class="flex-1">This item was updated by another user.</span>
+                  <button @click="setSelectedItemFromState(getItemStateSnapshot(selectedItem.id)); selectedItemOutdated = false" class="shrink-0 font-semibold hover:text-amber-900">Reload item</button>
+                </div>
+              </template>
               <div class="flex gap-2 px-4 pt-3">
                 <button @click="detailTab = 'detail'" :class="detailTab === 'detail' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'"
                   class="rounded-full border px-3 py-1.5 text-sm font-medium transition-colors">Detail</button>
@@ -820,7 +834,10 @@
         storeSaveItemId: null,
         categorySaveItemId: null,
         storeRefreshTimer: null,
+        itemRefreshTimer: null,
         itemSelectionPromise: Promise.resolve(),
+        selectedItemOutdated: false,
+        itemConflictMessage: '',
 
         get categoryFilters() {
           const itemCategories = new Set(this.items.map(item => item.category).filter(Boolean));
@@ -998,6 +1015,7 @@
           });
           window.addEventListener('focus', () => {
             this.refreshStoresSilently();
+            this.silentlyRefreshItems();
           });
           document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
@@ -1005,6 +1023,7 @@
             }
             if (!document.hidden) {
               this.refreshStoresSilently();
+              this.silentlyRefreshItems();
             }
           });
           this.fetchStores();
@@ -1013,6 +1032,7 @@
           this.updateClock();
           setInterval(() => this.updateClock(), 1000);
           this.storeRefreshTimer = window.setInterval(() => this.refreshStoresSilently(), 30000);
+          this.itemRefreshTimer = window.setInterval(() => this.silentlyRefreshItems(), 5000);
         },
 
         async setTheme(themeId) {
@@ -1111,12 +1131,24 @@
           this.showSettings = false;
         },
 
+        handleItemConflict(itemId, serverItem) {
+          this.clearPendingItemState(itemId);
+          this.replaceItemInState(serverItem);
+          if (this.selectedItem && this.selectedItem.id === itemId) {
+            this.setSelectedItemFromState(serverItem);
+          }
+          this.selectedItemOutdated = false;
+          this.itemConflictMessage = 'Another user updated this item. Your change was not saved.';
+        },
+
         async closePanel() {
           if (this.panelMode === 'detail') {
             await this.flushSelectedItemChanges();
           }
           this.panelOpen = false;
           this.panelMode = null;
+          this.selectedItemOutdated = false;
+          this.itemConflictMessage = '';
         },
 
         async closeSelectedItem() {
@@ -1299,6 +1331,7 @@
             return;
           }
 
+          this.itemConflictMessage = '';
           const payloadChanges = this.normalizeItemPatch(field, value);
           if (!payloadChanges) {
             const currentItem = this.getItemStateSnapshot(itemId);
@@ -1386,7 +1419,7 @@
               const updated = await this.requestJson(`/api/items/${itemId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ store_id: storeId }),
+                body: JSON.stringify({ store_id: storeId, version: currentItem.version }),
               }, 'Unable to update item store.');
               this.replaceItemInState(updated);
               await this.fetchItems();
@@ -1397,10 +1430,14 @@
                 }
               }
             } catch (err) {
-              if (previousItem) {
-                this.restoreItem(previousItem);
+              if (err.status === 409 && err.responsePayload?.current) {
+                this.handleItemConflict(itemId, err.responsePayload.current);
+              } else {
+                if (previousItem) {
+                  this.restoreItem(previousItem);
+                }
+                alert(err.message);
               }
-              alert(err.message);
             } finally {
               if (this.storeSaveItemId === itemId) {
                 this.storeSaveItemId = null;
@@ -1439,14 +1476,18 @@
               const updated = await this.requestJson(`/api/items/${itemId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ category: categoryName }),
+                body: JSON.stringify({ category: categoryName, version: currentItem.version }),
               }, 'Unable to update item category.');
               this.replaceItemInState(updated);
             } catch (err) {
-              if (previousItem) {
-                this.restoreItem(previousItem);
+              if (err.status === 409 && err.responsePayload?.current) {
+                this.handleItemConflict(itemId, err.responsePayload.current);
+              } else {
+                if (previousItem) {
+                  this.restoreItem(previousItem);
+                }
+                alert(err.message);
               }
-              alert(err.message);
             } finally {
               if (this.categorySaveItemId === itemId) {
                 this.categorySaveItemId = null;
@@ -1491,11 +1532,13 @@
           delete this.pendingItemChanges[itemId];
 
           const savePromise = (async () => {
+            const rollbackVersion = this.pendingItemRollback[itemId]?.version ?? this.getItemStateSnapshot(itemId)?.version;
             try {
+              const payload = rollbackVersion != null ? { ...changes, version: rollbackVersion } : changes;
               const updated = await this.requestJson(`/api/items/${itemId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(changes),
+                body: JSON.stringify(payload),
               }, 'Unable to update item.');
               this.replaceItemInState(updated);
 
@@ -1507,10 +1550,14 @@
             } catch (err) {
               const rollbackItem = this.pendingItemRollback[itemId];
               this.clearPendingItemState(itemId);
-              if (rollbackItem) {
-                this.restoreItem(rollbackItem);
+              if (err.status === 409 && err.responsePayload?.current) {
+                this.handleItemConflict(itemId, err.responsePayload.current);
+              } else {
+                if (rollbackItem) {
+                  this.restoreItem(rollbackItem);
+                }
+                alert(err.message);
               }
-              alert(err.message);
               return;
             } finally {
               delete this.pendingItemSavePromises[itemId];
@@ -1602,7 +1649,10 @@
           const payload = contentType.includes('application/json') ? await res.json() : null;
 
           if (!res.ok) {
-            throw new Error(payload?.error || defaultMessage);
+            const error = new Error(payload?.error || defaultMessage);
+            error.status = res.status;
+            error.responsePayload = payload;
+            throw error;
           }
 
           return payload;
@@ -1703,6 +1753,34 @@
             await Promise.all([this.fetchStores(), this.fetchCategories()]);
           } catch (err) {
             // Keep current catalog state when background refresh fails.
+          }
+        },
+
+        async silentlyRefreshItems() {
+          try {
+            const freshItems = await this.requestJson('/api/items', {}, '');
+            const freshById = new Map(freshItems.map(item => [item.id, item]));
+            this.items = this.items.map(item => freshById.get(item.id) ?? item);
+            for (const fresh of freshItems) {
+              if (!this.items.some(i => i.id === fresh.id)) {
+                this.items.push(fresh);
+              }
+            }
+            this.items = this.items.filter(item => freshById.has(item.id));
+            if (this.selectedItem && this.panelOpen && this.panelMode === 'detail') {
+              const fresh = freshById.get(this.selectedItem.id);
+              if (fresh && fresh.version !== this.selectedItem.version) {
+                const hasPending = !!(this.pendingItemChanges[this.selectedItem.id] &&
+                  Object.keys(this.pendingItemChanges[this.selectedItem.id]).length);
+                if (!hasPending) {
+                  this.setSelectedItemFromState(fresh);
+                } else {
+                  this.selectedItemOutdated = true;
+                }
+              }
+            }
+          } catch (err) {
+            // Swallow errors — silent poll; stale display is acceptable.
           }
         },
 

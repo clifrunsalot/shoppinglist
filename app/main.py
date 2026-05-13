@@ -646,6 +646,7 @@ def create_app(config_overrides=None):
             'store_id': item.store_id,
             'price': float(item.price or 0),
             'checked': item.checked,
+            'version': item.version if item.version is not None else 1,
             'template_item_id': item.template_item_id,
             'created_at': item.created_at.isoformat() if item.created_at else None,
         }
@@ -1511,6 +1512,21 @@ def create_app(config_overrides=None):
 
         if not data:
             return error_response('invalid JSON body', 400)
+
+        # Optimistic locking: if the caller supplies a version, it must match
+        # the current row version before any mutations are applied.
+        if 'version' in data:
+            try:
+                request_version = int(data['version'])
+            except (TypeError, ValueError):
+                return error_response('version must be an integer', 400)
+            current_version = item.version if item.version is not None else 1
+            if current_version != request_version:
+                return jsonify({
+                    'error': 'item modified by another user',
+                    'current': serialize(item),
+                }), 409
+
         if 'name' in data:
             name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
             if error:
@@ -1541,6 +1557,7 @@ def create_app(config_overrides=None):
         if 'price' in data:
             item.price = parse_price(data['price'])
 
+        item.version = (item.version if item.version is not None else 1) + 1
         db.session.commit()
         return jsonify(serialize(item))
 

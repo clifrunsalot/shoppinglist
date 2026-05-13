@@ -248,6 +248,7 @@ def test_items_api_creates_and_lists_items(auth_client, app):
         'store_id': None,
         'price': 2.35,
         'checked': False,
+        'version': 1,
         'template_item_id': None,
         'created_at': response.get_json()['created_at'],
     }
@@ -1710,3 +1711,128 @@ def test_index_page_contains_onboarding_guidance(auth_client):
     assert b'Default Grocery Items' in response.data
     assert b'Help &amp; User Guide' in response.data
     assert b'How to get started' in response.data
+
+
+# ---------------------------------------------------------------------------
+# Chunk 1 — version field on Item
+# ---------------------------------------------------------------------------
+
+def test_items_api_create_sets_version_to_1(auth_client):
+    response = auth_client.post('/api/items', json={'name': 'Bananas'})
+
+    assert response.status_code == 201
+    assert response.get_json()['version'] == 1
+
+
+def test_items_api_list_includes_version(auth_client, auth_user, app):
+    with app.app_context():
+        db.session.add(Item(name='Carrots', price=Decimal('0.00'), user_id=auth_user['id']))
+        db.session.commit()
+
+    response = auth_client.get('/api/items')
+
+    assert response.status_code == 200
+    items = response.get_json()
+    assert len(items) >= 1
+    for item in items:
+        assert 'version' in item
+        assert isinstance(item['version'], int)
+
+
+# ---------------------------------------------------------------------------
+# Chunk 2 — PATCH optimistic locking
+# ---------------------------------------------------------------------------
+
+def test_items_api_patch_version_increments(auth_client, auth_user, app):
+    with app.app_context():
+        item = Item(name='Milk', price=Decimal('0.00'), user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    response = auth_client.patch(f'/api/items/{item_id}', json={'checked': True, 'version': 1})
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['version'] == 2
+    assert data['checked'] is True
+
+
+def test_items_api_patch_with_stale_version_returns_409(auth_client, auth_user, app):
+    with app.app_context():
+        item = Item(name='Eggs', price=Decimal('0.00'), user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    # First patch succeeds and bumps to version 2
+    auth_client.patch(f'/api/items/{item_id}', json={'checked': True, 'version': 1})
+
+    # Second patch with the stale version 1 must be rejected
+    response = auth_client.patch(f'/api/items/{item_id}', json={'checked': False, 'version': 1})
+
+    assert response.status_code == 409
+    body = response.get_json()
+    assert body['error'] == 'item modified by another user'
+    assert 'current' in body
+    assert body['current']['version'] == 2
+    assert body['current']['checked'] is True  # server state unchanged
+
+
+def test_items_api_patch_without_version_succeeds(auth_client, auth_user, app):
+    with app.app_context():
+        item = Item(name='Butter', price=Decimal('0.00'), user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    # No 'version' key in payload — check is skipped, still returns 200
+    response = auth_client.patch(f'/api/items/{item_id}', json={'checked': True})
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['checked'] is True
+    assert data['version'] == 2  # version still increments
+
+
+# ---------------------------------------------------------------------------
+# Chunk 3 — shared account: two sessions on same credentials see same data
+# ---------------------------------------------------------------------------
+
+def test_shared_account_both_clients_see_same_items(app, create_user, login):
+    user = create_user('shared@example.com', 'sharedpass1!')
+
+    # Two independent clients simulating two browsers logged in as the same user
+    client_a = app.test_client()
+    client_b = app.test_client()
+    login_a = login.__wrapped__ if hasattr(login, '__wrapped__') else None
+
+    def _login_client(c, email, password):
+        c.get('/login')
+        csrf_token = None
+        for cookie in c.cookie_jar:
+            if getattr(cookie, 'key', None) == '_csrf_token':
+                csrf_token = cookie.value
+                break
+        from urllib.parse import urlencode
+        headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
+        resp = c.post(
+            '/login',
+            data=urlencode({'email': email, 'password': password}),
+            content_type='application/x-www-form-urlencoded',
+            headers=headers,
+        )
+        return resp
+
+    assert _login_client(client_a, user['email'], user['password']).status_code == 302
+    assert _login_client(client_b, user['email'], user['password']).status_code == 302
+
+    # Client A creates an item
+    create_resp = client_a.post('/api/items', json={'name': 'SharedBread'})
+    assert create_resp.status_code == 201
+
+    # Client B immediately sees it via GET /api/items
+    list_resp = client_b.get('/api/items')
+    assert list_resp.status_code == 200
+    names = [item['name'] for item in list_resp.get_json()]
+    assert 'SharedBread' in names

@@ -64,6 +64,7 @@ class Item(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     checked = db.Column(db.Boolean, default=False)
+    version = db.Column(db.Integer, nullable=False, default=1)
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_item_id = db.Column(db.Integer, db.ForeignKey('default_item_templates.id'), nullable=True)
