@@ -287,9 +287,7 @@ def create_app(config_overrides=None):
         )
 
     def clone_defaults_to_user(user):
-        store_map = {}
         created_stores = 0
-        created_items = 0
 
         templates = DefaultStoreTemplate.query.order_by(*default_store_ordering()).all()
         for index, template in enumerate(templates, start=1):
@@ -301,32 +299,9 @@ def create_app(config_overrides=None):
             )
             db.session.add(store)
             db.session.flush()
-            store_map[template.id] = store.id
             created_stores += 1
 
-        item_templates = DefaultItemTemplate.query.order_by(
-            DefaultItemTemplate.sort_order.asc(),
-            DefaultItemTemplate.name.asc(),
-            DefaultItemTemplate.id.asc(),
-        ).all()
-        for template in item_templates:
-            db.session.add(
-                Item(
-                    name=template.name,
-                    quantity=template.quantity,
-                    unit=template.unit,
-                    category=template.category,
-                    sort_order=template.sort_order,
-                    price=Decimal('0.00'),
-                    checked=False,
-                    user_id=user.id,
-                    store_id=store_map.get(template.store_template_id),
-                    template_item_id=template.id,
-                )
-            )
-            created_items += 1
-
-        return {'stores': created_stores, 'items': created_items}
+        return {'stores': created_stores, 'items': 0}
 
     def create_missing_default_store_for_user(user, template):
         existing_store = Store.query.filter_by(user_id=user.id, template_store_id=template.id).first()

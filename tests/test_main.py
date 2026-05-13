@@ -1535,9 +1535,8 @@ def test_admin_can_approve_signup_and_clone_defaults(monkeypatch, admin_client, 
         assert user.is_approved is True
         assert user.is_active is True
         assert len(stores) == 1
-        assert len(items) == 1
+        assert len(items) == 0
         assert stores[0].template_store_id is not None
-        assert items[0].template_item_id is not None
         assert AuditLog.query.filter_by(action='user.approved', target_id=user.id).count() == 1
 
     fresh_client = app.test_client()
@@ -1697,5 +1696,17 @@ def test_create_user_cli_creates_user_and_copies_defaults(app, create_default_te
         created_user = User.query.filter_by(email='owner@example.com').first()
         assert created_user is not None
         assert created_user.is_approved is True
-        assert Item.query.filter_by(user_id=created_user.id).count() == 1
+        assert Item.query.filter_by(user_id=created_user.id).count() == 0
         assert Store.query.filter_by(user_id=created_user.id).count() == 1
+
+
+def test_index_page_contains_onboarding_guidance(auth_client):
+    response = auth_client.get('/')
+
+    assert response.status_code == 200
+    # Both navigation traces must appear in the template source so Alpine can
+    # render them when the list is empty.
+    assert b'Import Default Items' in response.data
+    assert b'Default Grocery Items' in response.data
+    assert b'Help &amp; User Guide' in response.data
+    assert b'How to get started' in response.data

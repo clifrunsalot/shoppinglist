@@ -619,3 +619,31 @@ def test_mobile_row_selection_shows_collapsed_detail_trigger(browser_page, live_
     detail_trigger = page.get_by_test_id('open-detail-panel')
     expect(detail_trigger).to_be_visible()
     expect(detail_trigger).to_contain_text('Apples')
+
+
+@pytest.fixture
+def seeded_empty_list_user(app, create_user):
+    user = create_user('empty-list-user@example.com')
+    # No items or stores seeded — simulates a brand-new account.
+    return {'email': user['email'], 'password': user['password']}
+
+
+def test_empty_list_shows_onboarding_guidance_banner(browser_page, live_server, seeded_empty_list_user):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_empty_list_user['email'])
+    page.locator('#password').fill(seeded_empty_list_user['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    # Wait for Alpine.js to fetch items and reveal the empty-state banner.
+    empty_banner = page.get_by_text('Your list is empty')
+    empty_banner.wait_for()
+
+    # Verify both onboarding traces are visible.
+    expect(page.get_by_text('Import the default list', exact=False)).to_be_visible()
+    expect(page.get_by_text('Import Default Items', exact=False)).to_be_visible()
+    expect(page.get_by_text('Default Grocery Items', exact=False)).to_be_visible()
+    expect(page.get_by_text('Help & User Guide', exact=False)).to_be_visible()
