@@ -6,7 +6,9 @@ from math import isfinite
 from urllib.parse import urlsplit
 
 import click
-from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask import Flask, flash, g, jsonify, redirect, render_template, request, url_for
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from flask_seasurf import SeaSurf
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -207,12 +209,16 @@ def generate_temporary_password(length=12):
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 
+_INSECURE_DEFAULT_KEY = 'dev-secret-key-change-me'
+
+
 def create_app(config_overrides=None):
     app = Flask(__name__, template_folder='templates')
     # Allow forcing CSRF in tests by passing SEASURF_FORCE in config_overrides
     csrf = SeaSurf()
+    secret_key = os.environ.get('SECRET_KEY', _INSECURE_DEFAULT_KEY)
     app.config.update(
-        SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-key-change-me'),
+        SECRET_KEY=secret_key,
         SQLALCHEMY_DATABASE_URI=build_database_uri(),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SQLALCHEMY_ENGINE_OPTIONS={
@@ -230,6 +236,41 @@ def create_app(config_overrides=None):
     )
     if config_overrides:
         app.config.update(config_overrides)
+
+    # Rate limiting: disabled during automated tests to keep the suite fast
+    # and to avoid cross-test interference.  Enable explicitly when needed.
+    app.config.setdefault('RATELIMIT_ENABLED', not app.config.get('TESTING', False))
+    app.config.setdefault('RATELIMIT_STORAGE_URI', 'memory://')
+    limiter = Limiter(key_func=get_remote_address)
+    limiter.init_app(app)
+    # Anchor the Limiter to the app so it isn't garbage-collected after
+    # create_app() returns (the decorator closures hold only weak references).
+    app.extensions['_limiter_instance'] = limiter
+
+    # Guard against the insecure default secret key being used outside of
+    # local development / automated tests.  A leaked or guessable key lets
+    # anyone forge session cookies and CSRF tokens.
+    if app.config['SECRET_KEY'] == _INSECURE_DEFAULT_KEY and not app.config.get('TESTING'):
+        import warnings
+        warnings.warn(
+            'SECRET_KEY is set to the insecure default value. '
+            'Set the SECRET_KEY environment variable to a strong random secret '
+            'before deploying this application.',
+            stacklevel=2,
+        )
+
+    # Guard against running over plain HTTP in production.  SESSION_COOKIE_SECURE
+    # must be True whenever the app is served over HTTPS so that session cookies
+    # are never transmitted over an unencrypted connection.
+    if not app.config.get('SESSION_COOKIE_SECURE') and not app.config.get('TESTING'):
+        import warnings
+        warnings.warn(
+            'SESSION_COOKIE_SECURE is not enabled. '
+            'Set the SESSION_COOKIE_SECURE environment variable to 1 '
+            'when deploying behind HTTPS to prevent session cookie theft.',
+            stacklevel=2,
+        )
+
     # If SEASURF_FORCE is True, force CSRF even in testing
     if app.config.get('SEASURF_FORCE'):
         app.config['TESTING'] = False
@@ -806,6 +847,7 @@ def create_app(config_overrides=None):
         return jsonify({'status': 'ok'})
 
     @app.route('/login', methods=['GET', 'POST'])
+    @limiter.limit('10 per minute', methods=['POST'])
     def login():
         if current_user.is_authenticated:
             return redirect(resolve_next_target(build_next_target()))
@@ -1440,11 +1482,34 @@ def create_app(config_overrides=None):
         flash('User deleted.', 'success')
         return redirect(admin_users_anchor())
 
+    @app.before_request
+    def set_csp_nonce():
+        g.csp_nonce = secrets.token_urlsafe(16)
+
+    @app.context_processor
+    def inject_csp_nonce():
+        return {'csp_nonce': g.get('csp_nonce', '')}
+
     @app.after_request
     def apply_security_headers(response):
+        nonce = g.get('csp_nonce', '')
+        response.headers['Content-Security-Policy'] = (
+            f"default-src 'none'; "
+            f"script-src 'nonce-{nonce}' 'unsafe-eval' "
+            f"https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+            f"style-src 'unsafe-inline'; "
+            f"connect-src 'self'; "
+            f"img-src 'self' data:; "
+            f"font-src 'self'; "
+            f"base-uri 'self'; "
+            f"form-action 'self'; "
+            f"frame-ancestors 'none'; "
+            f"object-src 'none'"
+        )
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
+        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()'
         return response
 
     @app.route('/api/items', methods=['GET'])

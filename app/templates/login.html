@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0f766e" />
   <title>Sign In | Grocery List</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 </head>
 
 <body class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(15,118,110,0.16),_transparent_40%),linear-gradient(180deg,_#f8fafc_0%,_#ecfeff_100%)] text-slate-900">
@@ -85,7 +85,7 @@
       </section>
     </div>
   </main>
-  <script>
+  <script nonce="{{ csp_nonce }}">
     const togglePasswordButton = document.getElementById('toggle-password');
     const passwordInput = document.getElementById('password');
 

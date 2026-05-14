@@ -8,8 +8,6 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
-    ports:
-      - "5432:5432"
 
   web:
     build: .
@@ -18,7 +16,10 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       FLASK_APP: app.main
-      FLASK_DEBUG: 1
+      # Single worker keeps the in-memory rate-limit counter shared across all
+      # requests.  If you scale to multiple workers later, switch
+      # RATELIMIT_STORAGE_URI to a Redis URL instead.
+      GUNICORN_WORKERS: 1
     volumes:
       - .:/app
     ports:

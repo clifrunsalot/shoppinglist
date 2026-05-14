@@ -703,6 +703,61 @@ def test_security_headers_are_set_on_html_responses(auth_client):
     assert response.headers['X-Frame-Options'] == 'DENY'
     assert response.headers['Referrer-Policy'] == 'same-origin'
 
+    csp = response.headers.get('Content-Security-Policy', '')
+    assert "default-src 'none'" in csp
+    assert 'connect-src' in csp
+    assert 'form-action' in csp
+    assert "frame-ancestors 'none'" in csp
+    assert "object-src 'none'" in csp
+    assert "nonce-" in csp
+
+
+def test_session_cookie_secure_warning_when_disabled():
+    """create_app() should warn when SESSION_COOKIE_SECURE is off and TESTING is off."""
+    import warnings
+    from app.main import create_app
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        create_app({'TESTING': False, 'SESSION_COOKIE_SECURE': False,
+                    'WTF_CSRF_ENABLED': False, 'RATELIMIT_ENABLED': False})
+    messages = [str(w.message) for w in caught]
+    assert any('SESSION_COOKIE_SECURE' in m for m in messages)
+
+
+def test_session_cookie_secure_no_warning_when_enabled():
+    """No SESSION_COOKIE_SECURE warning when the flag is set."""
+    import warnings
+    from app.main import create_app
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        create_app({'TESTING': False, 'SESSION_COOKIE_SECURE': True,
+                    'WTF_CSRF_ENABLED': False, 'RATELIMIT_ENABLED': False})
+    messages = [str(w.message) for w in caught]
+    assert not any('SESSION_COOKIE_SECURE' in m for m in messages)
+
+
+def test_cdn_scripts_have_sri_integrity_attributes(client, auth_client):
+    """Alpine.js (served via jsDelivr with CORS) must have SRI integrity/crossorigin.
+    Tailwind is version-pinned but SRI is not applied because cdn.tailwindcss.com
+    does not return CORS headers, so crossorigin+integrity would block the script."""
+    import re
+    response = auth_client.get('/')
+    html = response.data.decode()
+
+    # Alpine.js from jsDelivr must have integrity + crossorigin
+    alpine_tags = re.findall(r'<script[^>]+cdn\.jsdelivr\.net[^>]*>', html)
+    assert alpine_tags, 'Alpine.js script tag not found'
+    for tag in alpine_tags:
+        assert 'integrity=' in tag, f'Missing SRI integrity on Alpine: {tag}'
+        assert 'crossorigin=' in tag, f'Missing crossorigin on Alpine: {tag}'
+
+    # Tailwind must be pinned to an explicit version (not a floating tag)
+    tailwind_tags = re.findall(r'<script[^>]+cdn\.tailwindcss\.com[^>]*>', html)
+    assert tailwind_tags, 'Tailwind script tag not found'
+    for tag in tailwind_tags:
+        assert '@' not in tag and 'x.x' not in tag, \
+            f'Tailwind script uses a floating version tag: {tag}'
+
 
 def test_logout_clears_session_and_redirects_to_login(auth_client):
     response = auth_client.post('/logout')
@@ -1836,3 +1891,41 @@ def test_shared_account_both_clients_see_same_items(app, create_user, login):
     assert list_resp.status_code == 200
     names = [item['name'] for item in list_resp.get_json()]
     assert 'SharedBread' in names
+
+
+# ---------------------------------------------------------------------------
+# Security: login rate limiting
+# ---------------------------------------------------------------------------
+
+def test_login_rate_limit_blocks_after_threshold():
+    """After 10 failed POST attempts from the same IP, login returns 429."""
+    from app.main import create_app as _create_app
+    from app.db import db as _db
+
+    rate_app = _create_app({
+        'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
+        'SQLALCHEMY_ENGINE_OPTIONS': {'pool_reset_on_return': None},
+        'TESTING': False,
+        'RATELIMIT_ENABLED': True,
+        'RATELIMIT_STORAGE_URI': 'memory://',
+        'SECRET_KEY': 'rate-limit-test-secret-key-x1y2z3',
+    })
+    with rate_app.app_context():
+        _db.create_all()
+
+    client = rate_app.test_client()
+
+    for i in range(10):
+        rv = client.post(
+            '/login',
+            data={'email': 'nobody@example.com', 'password': 'wrongpassword'},
+            content_type='application/x-www-form-urlencoded',
+        )
+        assert rv.status_code == 200, f'attempt {i + 1} should return login page (200), got {rv.status_code}'
+
+    rv = client.post(
+        '/login',
+        data={'email': 'nobody@example.com', 'password': 'wrongpassword'},
+        content_type='application/x-www-form-urlencoded',
+    )
+    assert rv.status_code == 429, f'11th attempt should be rate limited (429), got {rv.status_code}'
