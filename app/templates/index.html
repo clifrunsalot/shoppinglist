@@ -246,6 +246,19 @@
     .animate-in {
       animation: slide-in-from-bottom 300ms ease-out;
     }
+
+    /* Prevent iOS Safari / WebKit (DuckDuckGo) from auto-zooming the viewport
+       when a form field with font-size < 16px receives focus. The zoom persists
+       after the keyboard closes, making the layout wider than the screen until
+       the user manually pinches to reset. Scoped to mobile widths so desktop
+       text-sm sizing is preserved. */
+    @media screen and (max-width: 767px) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+      select,
+      textarea {
+        font-size: 16px !important;
+      }
+    }
   </style>
 </head>
 

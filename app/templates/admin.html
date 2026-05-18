@@ -7,6 +7,17 @@
   <meta name="theme-color" content="#0f172a" />
   <title>Admin | Grocery List</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <style>
+    /* Prevent iOS Safari / WebKit (DuckDuckGo) from auto-zooming the viewport
+       when a form field with font-size < 16px receives focus. */
+    @media screen and (max-width: 767px) {
+      input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+      select,
+      textarea {
+        font-size: 16px !important;
+      }
+    }
+  </style>
 </head>
 
 <body class="min-h-screen bg-[linear-gradient(180deg,_#f8fafc_0%,_#e2e8f0_100%)] text-slate-900">
