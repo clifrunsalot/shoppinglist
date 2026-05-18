@@ -102,6 +102,50 @@ def test_index_page_uses_debounced_item_save_hooks(auth_client):
     assert b'Manage Stores' not in response.data
 
 
+def test_index_page_panel_avoids_virtual_keyboard(auth_client):
+    # The bottom-sheet panel overlay must be keyboard-aware so the panel
+    # automatically rises above the virtual keyboard on iOS/WebKit without
+    # the user having to drag it.  Regression guard for the visualViewport fix.
+    response = auth_client.get('/')
+
+    assert response.status_code == 200
+    # Alpine state property and syncKeyboard initialiser must both be present.
+    assert b'keyboardOffset: 0' in response.data
+    assert b'const syncKeyboard = () =>' in response.data
+    assert b'window.visualViewport' in response.data
+    # The overlay's bottom edge is driven by the reactive keyboardOffset value.
+    assert b':style="`bottom: ${keyboardOffset}px`"' in response.data
+    # Overlay uses inset-x-0 top-0 (not a static inset-0) so only bottom is dynamic.
+    assert b'fixed inset-x-0 top-0' in response.data
+    # Panel sheet CSS class and its CSS variable must be rendered.
+    assert b'panel-sheet' in response.data
+    assert b'--panel-max-h' in response.data
+
+
+def test_mobile_input_font_size_prevents_ios_zoom(auth_client, admin_client, app):
+    # iOS Safari / DuckDuckGo (WebKit) auto-zoom the viewport when a focused
+    # input has font-size < 16 px.  The zoom persists after keyboard dismissal,
+    # making the layout wider than the screen.  All three pages must include the
+    # mobile-scoped CSS rule that forces inputs to 16 px.
+    ios_zoom_rule = b'font-size: 16px !important'
+    mobile_media_rule = b'max-width: 767px'
+
+    index_html = auth_client.get('/').data
+    assert ios_zoom_rule in index_html
+    assert mobile_media_rule in index_html
+
+    # Use a fresh unauthenticated client so /login renders the form rather than
+    # redirecting (auth_client and the shared client fixture are the same object).
+    anon_client = app.test_client()
+    login_html = anon_client.get('/login').data
+    assert ios_zoom_rule in login_html
+    assert mobile_media_rule in login_html
+
+    admin_html = admin_client.get('/admin').data
+    assert ios_zoom_rule in admin_html
+    assert mobile_media_rule in admin_html
+
+
 def test_signup_creates_pending_user(client, app):
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
