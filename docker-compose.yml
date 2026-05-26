@@ -20,6 +20,17 @@ services:
       # requests.  If you scale to multiple workers later, switch
       # RATELIMIT_STORAGE_URI to a Redis URL instead.
       GUNICORN_WORKERS: 1
+      # --- Transactional email (Resend) ---
+      # Set RESEND_API_KEY to enable real email delivery.  When absent the app
+      # logs emails to stderr instead (safe for local development).
+      # RESEND_API_KEY: your-resend-api-key-here
+      #
+      # The "From" address used for all outgoing emails.
+      # MAIL_FROM: no-reply@yourdomain.com
+      #
+      # Public base URL of this deployment, used to build verification links.
+      # Defaults to http://localhost:8000 when not set.
+      # APP_BASE_URL: https://yourdomain.com
     volumes:
       - .:/app
     ports:

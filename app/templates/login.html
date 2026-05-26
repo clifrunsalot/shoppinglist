@@ -77,20 +77,20 @@
         </form>
 
         <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-5 text-slate-600">
-          Need an account? Request access below or ask an administrator to create one for you.
+          Need an account? Enter your email below to receive a verification link. Once verified, an administrator will approve your access.
         </div>
 
         <form method="post" action="{{ url_for('signup') }}" class="mt-3 space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
           <div class="space-y-1">
             <h3 class="text-base font-semibold text-slate-900">Request Access</h3>
-            <p class="mt-1 text-sm text-slate-500">Submit your email and an administrator can approve your account and issue a temporary password.</p>
+            <p class="mt-1 text-sm text-slate-500">Enter your email and we'll send you a link to verify your address. An administrator will then review and approve your account.</p>
           </div>
           <div>
             <label for="signup-email" class="mb-2 block text-sm font-semibold text-slate-700">Email</label>
             <input id="signup-email" name="email" type="email" autocomplete="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-teal-300 focus:bg-white focus:ring-4 focus:ring-teal-100" />
           </div>
           <button type="submit" class="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-800 transition hover:border-teal-300 hover:text-teal-700">
-            Request Approval
+            Send Verification Link
           </button>
         </form>
       </section>

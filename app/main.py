@@ -1,6 +1,7 @@
 import json
 import os
 import secrets
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from math import isfinite
 from urllib.parse import urlsplit
@@ -14,7 +15,7 @@ from flask_login import LoginManager, current_user, login_required, login_user, 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.db import db, migrate
-from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, Store, User
+from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, SignupToken, Store, User
 
 
 MAX_REQUEST_BYTES = 16 * 1024
@@ -207,6 +208,71 @@ def resolve_next_target(target):
 def generate_temporary_password(length=12):
     alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+def _get_app_base_url():
+    return os.environ.get('APP_BASE_URL', 'http://localhost:8000').rstrip('/')
+
+
+def send_email(to_email, subject, text_body):
+    """Send a plain-text email via Resend.
+
+    Falls back to stderr logging when RESEND_API_KEY is absent so that
+    local development and automated tests work without a live API key.
+    Any Resend exception is caught and logged rather than propagated so
+    that email failures never surface as unhandled 500 errors to users.
+    """
+    import sys
+    api_key = os.environ.get('RESEND_API_KEY', '').strip()
+    mail_from = os.environ.get('MAIL_FROM', 'no-reply@example.com').strip()
+
+    if not api_key:
+        print(
+            f'[EMAIL STUB] To: {to_email} | Subject: {subject}\n{text_body}',
+            file=sys.stderr,
+        )
+        return
+
+    try:
+        import resend as _resend
+        _resend.api_key = api_key
+        _resend.Emails.send({
+            'from': mail_from,
+            'to': to_email,
+            'subject': subject,
+            'text': text_body,
+        })
+    except Exception as exc:
+        print(f'[EMAIL ERROR] Failed to send to {to_email}: {exc}', file=sys.stderr)
+
+
+def send_verification_email(to_email, token):
+    """Send the email-verification link to a prospective account holder."""
+    verify_url = f'{_get_app_base_url()}/verify-email/{token}'
+    subject = 'Verify your email – Grocery List'
+    text_body = (
+        'Hi,\n\n'
+        'Someone requested an account on Grocery List using this email address.\n\n'
+        'Click the link below to verify your email. '
+        'The link expires in 30 minutes.\n\n'
+        f'{verify_url}\n\n'
+        'If you did not request this, you can safely ignore this email.\n'
+    )
+    send_email(to_email, subject, text_body)
+
+
+def send_temp_password_email(to_email, temp_password):
+    """Send an approved user their temporary password."""
+    login_url = f'{_get_app_base_url()}/login'
+    subject = 'Your Grocery List account is ready'
+    text_body = (
+        'Hi,\n\n'
+        'Your Grocery List account has been approved.\n\n'
+        f'Your temporary password is:  {temp_password}\n\n'
+        f'Sign in at: {login_url}\n\n'
+        'Please change your password after signing in.\n'
+    )
+    send_email(to_email, subject, text_body)
 
 
 _INSECURE_DEFAULT_KEY = 'dev-secret-key-change-me'
@@ -877,6 +943,7 @@ def create_app(config_overrides=None):
 
         return render_template('login.html', error_message=error_message, next_target=next_target)
 
+    @limiter.limit('5 per hour', methods=['POST'])
     @app.route('/signup', methods=['POST'])
     def signup():
         email, error = normalize_email(request.form.get('email'))
@@ -889,28 +956,73 @@ def create_app(config_overrides=None):
             if existing_user.is_approved and existing_user.is_active:
                 flash('That email already has an account. Sign in instead.', 'error')
             elif not existing_user.is_approved:
-                flash('That email already has a pending approval request.', 'error')
+                flash('That email is already pending approval.', 'error')
             else:
                 flash('That email belongs to an inactive account. Contact an administrator.', 'error')
             return redirect(url_for('login'))
 
+        # Block duplicate active tokens to prevent email flooding.
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        active_token = SignupToken.query.filter_by(email=email, consumed=False).filter(
+            SignupToken.expires_at > now
+        ).first()
+        if active_token is not None:
+            flash(
+                'A verification link was already sent to that address. '
+                'Check your inbox (and spam folder).',
+                'error',
+            )
+            return redirect(url_for('login'))
+
+        # Soft-invalidate any leftover tokens for this email before issuing a new one.
+        SignupToken.query.filter_by(email=email, consumed=False).update({'consumed': True})
+
+        token = SignupToken.make(email)
+        db.session.add(token)
+        db.session.commit()
+        send_verification_email(email, token.token)
+        flash(
+            "We've sent a verification link to that address. "
+            'Check your inbox and follow the link to continue.',
+            'success',
+        )
+        return redirect(url_for('login'))
+
+    @app.route('/verify-email/<string:token_str>')
+    def verify_email(token_str):
+        sig_token = SignupToken.query.filter_by(token=token_str).first()
+        if sig_token is None or sig_token.consumed:
+            flash('This verification link is invalid or has already been used.', 'error')
+            return redirect(url_for('login'))
+        if sig_token.is_expired:
+            flash('This verification link has expired. Please request a new one.', 'error')
+            return redirect(url_for('login'))
+
+        existing = User.query.filter_by(email=sig_token.email).first()
+        if existing is not None:
+            sig_token.consumed = True
+            db.session.commit()
+            flash('That email already has an account. Sign in instead.', 'error')
+            return redirect(url_for('login'))
+
         user = User()
-        user.email = email
+        user.email = sig_token.email
         user.is_admin = False
         user.is_approved = False
         user.is_active = True
         user.set_password(generate_temporary_password())
+        sig_token.consumed = True
         db.session.add(user)
         db.session.flush()
         record_audit(
-            'signup.requested',
+            'signup.email_verified',
             'user',
-            f'Signup requested for {email}.',
+            f'Email verified for {sig_token.email}. Pending admin approval.',
             target_id=user.id,
-            details={'email': email},
+            details={'email': sig_token.email},
         )
         db.session.commit()
-        flash('Your signup request has been submitted for approval.', 'success')
+        flash('Email verified. Your account is pending admin approval.', 'success')
         return redirect(url_for('login'))
 
     @app.route('/logout', methods=['POST'])
@@ -1368,7 +1480,8 @@ def create_app(config_overrides=None):
         copied = clone_defaults_to_user(user)
         record_audit('user.approved', 'user', f'Approved {user.email} and assigned default data.', actor=current_user, target_id=user.id, details={'defaults_copied': copied})
         db.session.commit()
-        flash(f'Temporary password for {user.email}: {temporary_password}', 'success')
+        send_temp_password_email(user.email, temporary_password)
+        flash(f'Approved {user.email}. Their temporary password has been sent by email.', 'success')
         return redirect(url_for('admin_dashboard'))
 
     @app.route('/admin/users/<int:user_id>/deactivate', methods=['POST'])
@@ -1555,7 +1668,7 @@ def create_app(config_overrides=None):
                 template_item_id = int(template_item_id)
             except (TypeError, ValueError):
                 return error_response('template_item_id must be an integer', 400)
-            if DefaultItemTemplate.query.get(template_item_id) is None:
+            if db.session.get(DefaultItemTemplate, template_item_id) is None:
                 return error_response('template_item_id does not reference a known template', 404)
             if Item.query.filter_by(user_id=current_user.id, template_item_id=template_item_id).first() is not None:
                 return error_response('item already exists', 409)

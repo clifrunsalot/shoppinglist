@@ -76,11 +76,8 @@ def login(client):
         from urllib.parse import urlencode
         # Get CSRF token from cookie
         client.get('/login')  # Always GET the form page before POST
-        csrf_token = None
-        for cookie in client.cookie_jar:
-            if getattr(cookie, 'key', None) == '_csrf_token':
-                csrf_token = cookie.value
-                break
+        _csrf_cookie = client.get_cookie('_csrf_token')
+        csrf_token = _csrf_cookie.value if _csrf_cookie else None
         form_data = {'email': email, 'password': password}
         headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
         return client.post(
@@ -116,11 +113,8 @@ def admin_client(app, admin_user):
     client = app.test_client()
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
-    csrf_token = None
-    for cookie in client.cookie_jar:
-        if getattr(cookie, 'key', None) == '_csrf_token':
-            csrf_token = cookie.value
-            break
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    csrf_token = _csrf_cookie.value if _csrf_cookie else None
     form_data = {'email': admin_user['email'], 'password': admin_user['password']}
     headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
     response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)

@@ -1,10 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+import secrets
 import uuid
 
 from flask_login import UserMixin
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app.db import db
+
+
+def _utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class User(UserMixin, db.Model):
@@ -25,7 +30,7 @@ class User(UserMixin, db.Model):
     def is_active(self, value):
         self._is_active = value
     theme_preference = db.Column(db.String(20), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
     items = db.relationship('Item', backref='user', lazy=True)
     stores = db.relationship('Store', backref='user', lazy=True)
@@ -50,7 +55,7 @@ class Store(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_store_id = db.Column(db.Integer, db.ForeignKey('default_store_templates.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
 
 class Item(db.Model):
@@ -68,7 +73,7 @@ class Item(db.Model):
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_item_id = db.Column(db.Integer, db.ForeignKey('default_item_templates.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
 
 class DefaultStoreTemplate(db.Model):
@@ -82,7 +87,7 @@ class DefaultStoreTemplate(db.Model):
     template_key = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(100), nullable=False)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
     items = db.relationship('DefaultItemTemplate', backref='default_store_template', lazy=True)
 
@@ -97,7 +102,7 @@ class DefaultCategoryTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     template_key = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.String(60), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
 
 class DefaultItemTemplate(db.Model):
@@ -111,7 +116,7 @@ class DefaultItemTemplate(db.Model):
     category = db.Column(db.String(60), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     store_template_id = db.Column(db.Integer, db.ForeignKey('default_store_templates.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
 
 class AppSetting(db.Model):
@@ -120,7 +125,7 @@ class AppSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), nullable=False, unique=True)
     value = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
 
 
 class AuditLog(db.Model):
@@ -133,4 +138,35 @@ class AuditLog(db.Model):
     target_id = db.Column(db.Integer, nullable=True)
     summary = db.Column(db.String(255), nullable=False)
     details = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utcnow)
+
+
+_SIGNUP_TOKEN_TTL_MINUTES = 30
+
+
+class SignupToken(db.Model):
+    __tablename__ = 'signup_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), nullable=False, index=True)
+    token = db.Column(db.String(100), nullable=False, unique=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    consumed = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=_utcnow)
+
+    @property
+    def is_expired(self):
+        return datetime.now(timezone.utc).replace(tzinfo=None) >= self.expires_at
+
+    @property
+    def is_valid(self):
+        return not self.consumed and not self.is_expired
+
+    @staticmethod
+    def make(email):
+        return SignupToken(
+            email=email,
+            token=secrets.token_urlsafe(32),
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=_SIGNUP_TOKEN_TTL_MINUTES),
+            consumed=False,
+        )

@@ -2,8 +2,11 @@ def test_print_cookies_after_login_get(client):
     """Temporary debug: Print all cookies after GET /login to inspect CSRF token presence and name."""
     response = client.get('/login')
     print("\n[DEBUG] Cookies after GET /login:")
-    for cookie in client.cookie_jar:
-        print(f"[DEBUG] Cookie: key={cookie.key}, value={cookie.value}, domain={cookie.domain}, path={cookie.path}")
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    if _csrf_cookie:
+        print(f"[DEBUG] Cookie: key=_csrf_token, value={_csrf_cookie.value}")
+    else:
+        print("[DEBUG] No _csrf_token cookie found")
     # This test always passes; it's for debug output only
     assert response.status_code == 200
 from decimal import Decimal
@@ -149,23 +152,21 @@ def test_mobile_input_font_size_prevents_ios_zoom(auth_client, admin_client, app
 def test_signup_creates_pending_user(client, app):
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
-    csrf_token = None
-    for cookie in client.cookie_jar:
-        if getattr(cookie, 'key', None) == '_csrf_token':
-            csrf_token = cookie.value
-            break
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    csrf_token = _csrf_cookie.value if _csrf_cookie else None
     form_data = {'email': 'pending@example.com'}
     headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
     response = client.post('/signup', data=urlencode(form_data), follow_redirects=True, content_type='application/x-www-form-urlencoded', headers=headers)
 
     assert response.status_code == 200
-    assert b'Your signup request has been submitted for approval.' in response.data
+    assert b'verification link' in response.data
 
     with app.app_context():
-        user = User.query.filter_by(email='pending@example.com').first()
-        assert user is not None
-        assert user.is_approved is False
-        assert user.is_active is True
+        # Phase 3: signup creates a SignupToken, NOT a User
+        token = SignupToken.query.filter_by(email='pending@example.com').first()
+        assert token is not None
+        assert token.consumed is False
+        assert User.query.filter_by(email='pending@example.com').first() is None
 
 
 def test_pending_user_cannot_login(client, create_user):
@@ -173,11 +174,8 @@ def test_pending_user_cannot_login(client, create_user):
 
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
-    csrf_token = None
-    for cookie in client.cookie_jar:
-        if getattr(cookie, 'key', None) == '_csrf_token':
-            csrf_token = cookie.value
-            break
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    csrf_token = _csrf_cookie.value if _csrf_cookie else None
     form_data = {'email': user['email'], 'password': user['password']}
     headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
     response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
@@ -191,11 +189,8 @@ def test_inactive_user_cannot_login(client, create_user):
 
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
-    csrf_token = None
-    for cookie in client.cookie_jar:
-        if getattr(cookie, 'key', None) == '_csrf_token':
-            csrf_token = cookie.value
-            break
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    csrf_token = _csrf_cookie.value if _csrf_cookie else None
     form_data = {'email': user['email'], 'password': user['password']}
     headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
     response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
@@ -209,11 +204,8 @@ def test_login_rejects_invalid_credentials(client, create_user):
 
     from urllib.parse import urlencode
     client.get('/login')  # Always GET the form page before POST
-    csrf_token = None
-    for cookie in client.cookie_jar:
-        if getattr(cookie, 'key', None) == '_csrf_token':
-            csrf_token = cookie.value
-            break
+    _csrf_cookie = client.get_cookie('_csrf_token')
+    csrf_token = _csrf_cookie.value if _csrf_cookie else None
     form_data = {'email': user['email'], 'password': 'wrong-password'}
     headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
     response = client.post('/login', data=urlencode(form_data), content_type='application/x-www-form-urlencoded', headers=headers)
@@ -1621,12 +1613,15 @@ def test_admin_can_approve_signup_and_clone_defaults(monkeypatch, admin_client, 
     create_default_templates()
     pending_user = create_user('newuser@example.com', approved=False)
     monkeypatch.setattr(main_module, 'generate_temporary_password', lambda length=12: 'TempPass234')
+    monkeypatch.setattr(main_module, 'send_temp_password_email', lambda e, p: None)
 
     response = admin_client.post(f"/admin/users/{pending_user['id']}/approve", follow_redirects=True)
 
     assert response.status_code == 200
-    assert b'Temporary password for newuser@example.com:' in response.data
-    assert b'TempPass234' in response.data
+    assert b'Approved newuser@example.com.' in response.data
+    assert b'temporary password has been sent by email' in response.data
+    # Temp password must NOT be exposed in the flash message
+    assert b'TempPass234' not in response.data
 
     with app.app_context():
         user = db.session.get(User, pending_user['id'])
@@ -1908,11 +1903,8 @@ def test_shared_account_both_clients_see_same_items(app, create_user, login):
 
     def _login_client(c, email, password):
         c.get('/login')
-        csrf_token = None
-        for cookie in c.cookie_jar:
-            if getattr(cookie, 'key', None) == '_csrf_token':
-                csrf_token = cookie.value
-                break
+        _csrf_cookie = c.get_cookie('_csrf_token')
+        csrf_token = _csrf_cookie.value if _csrf_cookie else None
         from urllib.parse import urlencode
         headers = {'X-CSRFToken': csrf_token} if csrf_token else {}
         resp = c.post(
@@ -1973,3 +1965,486 @@ def test_login_rate_limit_blocks_after_threshold():
         content_type='application/x-www-form-urlencoded',
     )
     assert rv.status_code == 429, f'11th attempt should be rate limited (429), got {rv.status_code}'
+
+
+# ---------------------------------------------------------------------------
+# Phase 1: SignupToken model
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timedelta, timezone
+from app.models import SignupToken
+
+
+class TestSignupTokenModel:
+    """Unit tests for SignupToken model properties and factory method."""
+
+    def test_make_creates_token_with_correct_fields(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            assert token.email == 'test@example.com'
+            assert token.token is not None
+            assert len(token.token) > 20
+            assert token.consumed is False
+            assert token.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def test_make_expiry_is_approximately_30_minutes(self, app):
+        with app.app_context():
+            before = datetime.now(timezone.utc).replace(tzinfo=None)
+            token = SignupToken.make('test@example.com')
+            after = datetime.now(timezone.utc).replace(tzinfo=None)
+            delta_min = (token.expires_at - before).total_seconds() / 60
+            delta_max = (token.expires_at - after).total_seconds() / 60
+            assert 29 <= delta_min <= 31
+            assert 29 <= delta_max <= 31
+
+    def test_make_generates_unique_tokens(self, app):
+        with app.app_context():
+            t1 = SignupToken.make('a@example.com')
+            t2 = SignupToken.make('a@example.com')
+            assert t1.token != t2.token
+
+    def test_is_valid_true_for_fresh_token(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            assert token.is_valid is True
+
+    def test_is_valid_false_when_consumed(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            token.consumed = True
+            assert token.is_valid is False
+
+    def test_is_valid_false_when_expired(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            token.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
+            assert token.is_valid is False
+
+    def test_is_expired_false_for_future(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            assert token.is_expired is False
+
+    def test_is_expired_true_at_boundary(self, app):
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            token.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
+            assert token.is_expired is True
+
+    def test_token_persists_to_database(self, app):
+        with app.app_context():
+            token = SignupToken.make('persist@example.com')
+            db.session.add(token)
+            db.session.commit()
+            token_id = token.id
+
+            fetched = db.session.get(SignupToken, token_id)
+            assert fetched is not None
+            assert fetched.email == 'persist@example.com'
+            assert fetched.consumed is False
+            assert fetched.expires_at is not None
+
+            db.session.delete(fetched)
+            db.session.commit()
+
+    def test_token_column_is_unique(self, app):
+        """Two rows with the same token value must fail at the DB level."""
+        import sqlalchemy.exc
+        with app.app_context():
+            raw_token = 'fixed-test-token-value-unique-check'
+            t1 = SignupToken(
+                email='u1@example.com',
+                token=raw_token,
+                expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30),
+                consumed=False,
+            )
+            t2 = SignupToken(
+                email='u2@example.com',
+                token=raw_token,
+                expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30),
+                consumed=False,
+            )
+            db.session.add(t1)
+            db.session.commit()
+            db.session.add(t2)
+            with pytest.raises(sqlalchemy.exc.IntegrityError):
+                db.session.commit()
+            db.session.rollback()
+            # Clean up
+            db.session.delete(db.session.get(SignupToken, t1.id))
+            db.session.commit()
+
+    def test_make_token_contains_only_url_safe_characters(self, app):
+        """Token must be embeddable in a URL path without percent-encoding."""
+        import re
+        with app.app_context():
+            token = SignupToken.make('safe@example.com')
+            assert re.fullmatch(r'[A-Za-z0-9_\-]+', token.token), (
+                f"Token contains non-URL-safe characters: {token.token!r}"
+            )
+
+    def test_make_token_has_sufficient_entropy(self, app):
+        """Token must be long enough to resist brute force (>=40 chars for 32 bytes entropy)."""
+        with app.app_context():
+            token = SignupToken.make('entropy@example.com')
+            assert len(token.token) >= 40, f"Token too short: {len(token.token)} chars"
+
+    def test_is_valid_false_when_both_consumed_and_expired(self, app):
+        """is_valid must be False when both consumed and expired (belt-and-suspenders)."""
+        with app.app_context():
+            token = SignupToken.make('test@example.com')
+            token.consumed = True
+            token.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
+            assert token.is_valid is False
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: Email helpers
+# ---------------------------------------------------------------------------
+
+import app.main as _main_module
+
+
+class TestEmailHelpers:
+    """Unit tests for send_email, send_verification_email, send_temp_password_email."""
+
+    def test_send_email_stubs_to_stderr_when_no_api_key(self, monkeypatch, capsys):
+        """With no RESEND_API_KEY set the helper logs to stderr and returns."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        _main_module.send_email('user@example.com', 'Hello', 'body text')
+        captured = capsys.readouterr()
+        assert '[EMAIL STUB]' in captured.err
+        assert 'user@example.com' in captured.err
+
+    def test_send_email_does_not_raise_when_no_api_key(self, monkeypatch):
+        """Stub path must never raise even if called with unusual inputs."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        _main_module.send_email('a@b.com', 'S', 'B')  # must not raise
+
+    def test_send_email_calls_resend_when_api_key_present(self, monkeypatch):
+        """When RESEND_API_KEY is set, resend.Emails.send() is called with correct params."""
+        monkeypatch.setenv('RESEND_API_KEY', 're_test-key')
+        monkeypatch.setenv('MAIL_FROM', 'app@example.com')
+
+        sent = []
+        import resend as _resend
+        monkeypatch.setattr(_resend.Emails, 'send', lambda params: sent.append(params))
+
+        _main_module.send_email('recipient@example.com', 'Subject', 'Body')
+        assert len(sent) == 1
+        assert sent[0]['to'] == 'recipient@example.com'
+        assert sent[0]['subject'] == 'Subject'
+
+    def test_send_email_logs_on_resend_exception(self, monkeypatch, capsys):
+        """A Resend API error is caught and logged; it must not propagate."""
+        monkeypatch.setenv('RESEND_API_KEY', 're_bad-key')
+
+        def _fail(params):
+            raise RuntimeError('network error')
+
+        import resend as _resend
+        monkeypatch.setattr(_resend.Emails, 'send', _fail)
+
+        _main_module.send_email('x@example.com', 'S', 'B')  # must not raise
+        captured = capsys.readouterr()
+        assert '[EMAIL ERROR]' in captured.err
+
+    def test_send_verification_email_includes_token_url(self, monkeypatch, capsys):
+        """Verification email body must contain the full /verify-email/<token> URL."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        monkeypatch.setenv('APP_BASE_URL', 'https://app.example.com')
+        _main_module.send_verification_email('new@example.com', 'abc123token')
+        captured = capsys.readouterr()
+        assert 'https://app.example.com/verify-email/abc123token' in captured.err
+
+    def test_send_verification_email_uses_default_base_url(self, monkeypatch, capsys):
+        """Falls back to localhost:8000 when APP_BASE_URL is not configured."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        monkeypatch.delenv('APP_BASE_URL', raising=False)
+        _main_module.send_verification_email('new@example.com', 'tok')
+        captured = capsys.readouterr()
+        assert 'http://localhost:8000/verify-email/tok' in captured.err
+
+    def test_send_temp_password_email_includes_password_and_login_url(self, monkeypatch, capsys):
+        """Temp-password email must contain the password and the login URL."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        monkeypatch.setenv('APP_BASE_URL', 'https://app.example.com')
+        _main_module.send_temp_password_email('approved@example.com', 'TmpPwd99')
+        captured = capsys.readouterr()
+        assert 'TmpPwd99' in captured.err
+        assert 'https://app.example.com/login' in captured.err
+
+    def test_send_verification_email_strips_trailing_slash_from_base_url(self, monkeypatch, capsys):
+        """Trailing slash on APP_BASE_URL must not produce a double-slash in the URL."""
+        monkeypatch.delenv('RESEND_API_KEY', raising=False)
+        monkeypatch.setenv('APP_BASE_URL', 'https://app.example.com/')
+        _main_module.send_verification_email('x@example.com', 'tok')
+        captured = capsys.readouterr()
+        assert 'https://app.example.com/verify-email/tok' in captured.err
+        assert '//verify-email' not in captured.err
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: Email-verification signup flow and /verify-email route
+# ---------------------------------------------------------------------------
+
+class TestPhase3SignupFlow:
+    """Integration tests for the token-based signup and verify-email routes."""
+
+    def _post_signup(self, client, email):
+        """POST /signup with a CSRF token; follows redirects."""
+        from urllib.parse import urlencode
+        client.get('/login')
+        csrf = client.get_cookie('_csrf_token')
+        headers = {'X-CSRFToken': csrf.value} if csrf else {}
+        return client.post(
+            '/signup',
+            data=urlencode({'email': email}),
+            content_type='application/x-www-form-urlencoded',
+            headers=headers,
+            follow_redirects=True,
+        )
+
+    def _insert_token(self, app, email, *, consumed=False, expired=False):
+        """Insert a SignupToken directly into the DB; return the raw token string."""
+        from datetime import datetime, timedelta, timezone
+        with app.app_context():
+            SignupToken.query.filter_by(email=email).delete()
+            db.session.commit()
+            tok = SignupToken.make(email)
+            if consumed:
+                tok.consumed = True
+            if expired:
+                tok.expires_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
+            db.session.add(tok)
+            db.session.commit()
+            return tok.token
+
+    # --- /signup route ---
+
+    def test_signup_creates_token_and_calls_send_verification_email(self, client, app, monkeypatch):
+        """POST /signup creates a SignupToken and calls send_verification_email."""
+        sent = []
+        monkeypatch.setattr(_main_module, 'send_verification_email', lambda e, t: sent.append((e, t)))
+
+        resp = self._post_signup(client, 'p3-new@example.com')
+
+        assert resp.status_code == 200
+        assert b'verification link' in resp.data
+        assert len(sent) == 1
+        assert sent[0][0] == 'p3-new@example.com'
+        with app.app_context():
+            tok = SignupToken.query.filter_by(email='p3-new@example.com').first()
+            assert tok is not None
+            assert tok.consumed is False
+            assert sent[0][1] == tok.token
+
+    def test_signup_does_not_create_user(self, client, app, monkeypatch):
+        """POST /signup must NOT create a User row; only a SignupToken."""
+        monkeypatch.setattr(_main_module, 'send_verification_email', lambda e, t: None)
+        self._post_signup(client, 'p3-nouser@example.com')
+        with app.app_context():
+            assert User.query.filter_by(email='p3-nouser@example.com').first() is None
+
+    def test_signup_duplicate_active_token_shows_error(self, client, app, monkeypatch):
+        """Second POST /signup for the same email while a token is still valid shows an error."""
+        monkeypatch.setattr(_main_module, 'send_verification_email', lambda e, t: None)
+        self._insert_token(app, 'p3-dup@example.com')
+
+        resp = self._post_signup(client, 'p3-dup@example.com')
+
+        assert b'already sent' in resp.data or b'Check your inbox' in resp.data
+
+    def test_signup_allows_new_token_after_expiry(self, client, app, monkeypatch):
+        """POST /signup succeeds when the existing token for that email is expired."""
+        sent = []
+        monkeypatch.setattr(_main_module, 'send_verification_email', lambda e, t: sent.append((e, t)))
+        self._insert_token(app, 'p3-reexpire@example.com', expired=True)
+
+        resp = self._post_signup(client, 'p3-reexpire@example.com')
+
+        assert b'verification link' in resp.data
+        assert len(sent) == 1
+        with app.app_context():
+            active = SignupToken.query.filter_by(
+                email='p3-reexpire@example.com', consumed=False
+            ).first()
+            assert active is not None
+
+    def test_signup_old_tokens_invalidated_when_new_one_issued(self, client, app, monkeypatch):
+        """Expired tokens for same email are marked consumed when a new token is issued."""
+        monkeypatch.setattr(_main_module, 'send_verification_email', lambda e, t: None)
+        self._insert_token(app, 'p3-invalidate@example.com', expired=True)
+        self._post_signup(client, 'p3-invalidate@example.com')
+        with app.app_context():
+            all_tokens = SignupToken.query.filter_by(email='p3-invalidate@example.com').all()
+            consumed_count = sum(1 for t in all_tokens if t.consumed)
+            assert consumed_count >= 1
+
+    def test_signup_rejects_existing_approved_user(self, client, create_user):
+        """POST /signup with the email of an approved user shows 'already has an account'."""
+        create_user('p3-approved@example.com', approved=True)
+        resp = self._post_signup(client, 'p3-approved@example.com')
+        assert b'already has an account' in resp.data
+
+    def test_signup_rejects_existing_pending_user(self, client, create_user):
+        """POST /signup with email of an unapproved user shows 'pending approval'."""
+        create_user('p3-pendinguser@example.com', approved=False)
+        resp = self._post_signup(client, 'p3-pendinguser@example.com')
+        assert b'pending approval' in resp.data
+
+    # --- /verify-email route ---
+
+    def test_verify_email_creates_pending_user_and_consumes_token(self, client, app):
+        """GET /verify-email/<token> creates a User(is_approved=False) and marks token consumed."""
+        tok = self._insert_token(app, 'p3-verify@example.com')
+
+        resp = client.get(f'/verify-email/{tok}', follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b'pending admin approval' in resp.data
+        with app.app_context():
+            user = User.query.filter_by(email='p3-verify@example.com').first()
+            assert user is not None
+            assert user.is_approved is False
+            assert user.is_active is True
+            db_tok = SignupToken.query.filter_by(token=tok).first()
+            assert db_tok.consumed is True
+
+    def test_verify_email_records_audit_log(self, client, app):
+        """GET /verify-email/<token> writes a signup.email_verified audit entry."""
+        tok = self._insert_token(app, 'p3-audit@example.com')
+        client.get(f'/verify-email/{tok}')
+        with app.app_context():
+            user = User.query.filter_by(email='p3-audit@example.com').first()
+            assert user is not None
+            assert AuditLog.query.filter_by(
+                action='signup.email_verified', target_id=user.id
+            ).count() == 1
+
+    def test_verify_email_invalid_token_shows_error(self, client):
+        """GET /verify-email with a non-existent token shows the 'invalid' message."""
+        resp = client.get('/verify-email/notarealtoken', follow_redirects=True)
+        assert resp.status_code == 200
+        assert b'invalid' in resp.data
+
+    def test_verify_email_consumed_token_shows_error(self, client, app):
+        """GET /verify-email with an already-consumed token shows the 'invalid' message."""
+        tok = self._insert_token(app, 'p3-consumed@example.com', consumed=True)
+        resp = client.get(f'/verify-email/{tok}', follow_redirects=True)
+        assert b'invalid' in resp.data
+
+    def test_verify_email_expired_token_shows_error(self, client, app):
+        """GET /verify-email with an expired token shows the 'expired' message."""
+        tok = self._insert_token(app, 'p3-expiredv@example.com', expired=True)
+        resp = client.get(f'/verify-email/{tok}', follow_redirects=True)
+        assert b'expired' in resp.data
+
+    def test_verify_email_existing_user_edge_case_handled_gracefully(self, client, app, create_user):
+        """If a User already exists for the token's email, token is consumed and user sees a message."""
+        tok = self._insert_token(app, 'p3-edge@example.com')
+        create_user('p3-edge@example.com')
+
+        resp = client.get(f'/verify-email/{tok}', follow_redirects=True)
+
+        assert resp.status_code == 200
+        with app.app_context():
+            db_tok = SignupToken.query.filter_by(token=tok).first()
+            assert db_tok.consumed is True
+
+    # --- admin_approve_user ---
+
+    def test_admin_approve_emails_password_not_shown_in_flash(self, monkeypatch, admin_client, create_user, app):
+        """admin_approve_user should email the password rather than display it in the flash."""
+        pending = create_user('p3-approveme@example.com', approved=False)
+        sent = []
+        monkeypatch.setattr(_main_module, 'send_temp_password_email', lambda e, p: sent.append((e, p)))
+        monkeypatch.setattr(_main_module, 'generate_temporary_password', lambda length=12: 'Ph3TmpPwd!')
+
+        resp = admin_client.post(f"/admin/users/{pending['id']}/approve", follow_redirects=True)
+
+        assert resp.status_code == 200
+        assert b'Ph3TmpPwd!' not in resp.data
+        assert len(sent) == 1
+        assert sent[0][0] == 'p3-approveme@example.com'
+        assert sent[0][1] == 'Ph3TmpPwd!'
+        with app.app_context():
+            user = db.session.get(User, pending['id'])
+            assert user.is_approved is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: Template copy changes
+# ---------------------------------------------------------------------------
+
+class TestPhase4Templates:
+    """Verify login.html and admin.html reflect the email-verification flow."""
+
+    # --- login.html ---
+
+    def test_login_signup_hint_mentions_verification_link(self, client):
+        """The hint above the signup form should mention a verification link."""
+        resp = client.get('/login')
+        assert resp.status_code == 200
+        assert b'verification link' in resp.data
+
+    def test_login_signup_description_updated(self, client):
+        """The signup-form description should no longer promise an admin-issued temp password."""
+        resp = client.get('/login')
+        # Old copy
+        assert b'an administrator can approve your account and issue a temporary password' not in resp.data
+        # New copy
+        assert b"we'll send you a link to verify your address" in resp.data
+
+    def test_login_signup_button_says_send_verification_link(self, client):
+        """The signup-form submit button label should say 'Send Verification Link'."""
+        resp = client.get('/login')
+        assert b'Send Verification Link' in resp.data
+        assert b'Request Approval' not in resp.data
+
+    def test_login_signup_heading_still_says_request_access(self, client):
+        """The 'Request Access' heading must be preserved (other tests depend on it)."""
+        resp = client.get('/login')
+        assert b'Request Access' in resp.data
+
+    # --- admin.html ---
+
+    def test_admin_no_copy_password_button_in_page(self, admin_client):
+        """admin.html must not contain the copy-password button markup."""
+        resp = admin_client.get('/admin')
+        assert resp.status_code == 200
+        assert b'data-copy-temp-password' not in resp.data
+        assert b'Copy Password' not in resp.data
+
+    def test_admin_no_copy_password_js(self, admin_client):
+        """admin.html must not contain the copyText or copyPasswordButtons JS."""
+        resp = admin_client.get('/admin')
+        assert b'copyPasswordButtons' not in resp.data
+        assert b'copyText' not in resp.data
+
+    def test_admin_pending_approvals_description_updated(self, admin_client):
+        """Pending Approvals section description should mention email delivery."""
+        resp = admin_client.get('/admin')
+        assert b'will receive a temporary password by email' in resp.data
+        # Old copy must be gone
+        assert b'copy the current default stores and items' not in resp.data
+
+    def test_admin_approve_button_label_updated(self, admin_client, create_user):
+        """The approve button must say 'Approve and Send Password' not 'Approve And Generate Password'."""
+        create_user('p4-pending@example.com', approved=False)
+        resp = admin_client.get('/admin')
+        assert b'Approve and Send Password' in resp.data
+        assert b'Approve And Generate Password' not in resp.data
+
+    def test_admin_flash_approval_renders_plain_text(self, monkeypatch, admin_client, create_user):
+        """After approval, the flash message renders as plain text with no copy-paste widget."""
+        pending = create_user('p4-flashtest@example.com', approved=False)
+        monkeypatch.setattr(_main_module, 'send_temp_password_email', lambda e, p: None)
+
+        resp = admin_client.post(
+            f"/admin/users/{pending['id']}/approve", follow_redirects=True
+        )
+        assert resp.status_code == 200
+        assert b'data-temp-password-value' not in resp.data
+        assert b'data-copy-temp-password' not in resp.data
+        assert b'Approved p4-flashtest@example.com.' in resp.data

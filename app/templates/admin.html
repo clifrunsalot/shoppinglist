@@ -42,18 +42,7 @@
     <div class="mb-6 space-y-3">
       {% for category, message in messages %}
       <div class="rounded-2xl border px-4 py-3 text-sm font-medium {% if category == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border-amber-200 bg-amber-50 text-amber-700{% endif %}">
-        {% if category == 'success' and 'Temporary password for ' in message %}
-        {% set parts = message.split(': ', 1) %}
-        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div class="min-w-0">
-            <div>{{ parts[0] }}:</div>
-            <div class="mt-1 break-all rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 font-mono text-emerald-900 select-all" data-temp-password-value>{{ parts[1] if parts|length > 1 else '' }}</div>
-          </div>
-          <button type="button" data-copy-temp-password class="shrink-0 rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800 transition hover:border-emerald-400">Copy Password</button>
-        </div>
-        {% else %}
         {{ message }}
-        {% endif %}
       </div>
       {% endfor %}
     </div>
@@ -66,7 +55,7 @@
           <div class="flex items-center justify-between gap-4">
             <div>
               <h2 class="text-xl font-bold text-slate-950">Pending Approvals</h2>
-              <p class="mt-1 text-sm text-slate-500">Approve requests to generate a temporary password and copy the current default stores and items.</p>
+              <p class="mt-1 text-sm text-slate-500">Approve verified accounts. The user will receive a temporary password by email.</p>
             </div>
             <div class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">{{ pending_users|length }} pending</div>
           </div>
@@ -80,7 +69,7 @@
               </div>
               <form method="post" action="{{ url_for('admin_approve_user', user_id=user.id) }}">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Approve And Generate Password</button>
+                <button type="submit" class="rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition hover:bg-slate-800">Approve and Send Password</button>
               </form>
             </div>
             {% else %}
@@ -657,7 +646,6 @@
     const adminScrollStorageKey = 'shoppinglist-admin-scroll-target';
     const logoutForm = document.querySelector('[data-logout-form]');
     const logoutButton = document.querySelector('[data-logout-button]');
-    const copyPasswordButtons = document.querySelectorAll('[data-copy-temp-password]');
     const preserveScrollForms = document.querySelectorAll('[data-preserve-scroll-form]');
     const usersSection = document.querySelector('[data-users-section]');
     const defaultStoresSection = document.querySelector('[data-default-stores-section]');
@@ -701,47 +689,6 @@
     });
 
     restoreAdminScrollPosition();
-
-    async function copyText(text) {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-
-      const textArea = document.createElement('textarea');
-      textArea.value = text;
-      textArea.setAttribute('readonly', '');
-      textArea.style.position = 'absolute';
-      textArea.style.left = '-9999px';
-      document.body.appendChild(textArea);
-      textArea.select();
-      textArea.setSelectionRange(0, text.length);
-      const copied = document.execCommand('copy');
-      document.body.removeChild(textArea);
-      return copied;
-    }
-
-    copyPasswordButtons.forEach((button) => {
-      button.addEventListener('click', async () => {
-        const passwordContainer = button.parentElement?.querySelector('[data-temp-password-value]');
-        const password = passwordContainer?.textContent?.trim() || '';
-        if (!password) {
-          button.textContent = 'Unavailable';
-          return;
-        }
-
-        try {
-          const copied = await copyText(password);
-          button.textContent = copied ? 'Copied' : 'Select Text';
-        } catch (error) {
-          button.textContent = 'Select Text';
-        }
-
-        window.setTimeout(() => {
-          button.textContent = 'Copy Password';
-        }, 1600);
-      });
-    });
 
     document.querySelectorAll('[data-confirm-message]').forEach((button) => {
       button.addEventListener('click', (event) => {
