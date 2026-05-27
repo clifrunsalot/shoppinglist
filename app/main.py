@@ -15,7 +15,7 @@ from flask_login import LoginManager, current_user, login_required, login_user, 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.db import db, migrate
-from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, SignupToken, Store, User
+from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Household, HouseholdInvite, HouseholdMember, Item, SignupToken, Store, User
 
 
 MAX_REQUEST_BYTES = 16 * 1024
@@ -275,6 +275,34 @@ def send_temp_password_email(to_email, temp_password):
     send_email(to_email, subject, text_body)
 
 
+def send_household_invite_email(to_email, inviter_email, token):
+    """Send a household invitation link."""
+    join_url = f'{_get_app_base_url()}/join/{token}'
+    subject = f'{inviter_email} invited you to a shared shopping list'
+    text_body = (
+        'Hi,\n\n'
+        f'{inviter_email} has invited you to join their shopping list on Grocery List.\n\n'
+        'Click the link below to accept the invitation:\n\n'
+        f'{join_url}\n\n'
+        "This link expires in 7 days. If you don't have an account yet, "
+        "you'll need to sign up first.\n\n"
+        'If you did not expect this invitation, you can safely ignore this email.\n'
+    )
+    send_email(to_email, subject, text_body)
+
+
+def send_household_notify_email(to_email, requester_email):
+    """Nudge a household member to check the shared shopping list."""
+    login_url = f'{_get_app_base_url()}/login'
+    subject = f'{requester_email} wants you to check the shopping list'
+    text_body = (
+        'Hi,\n\n'
+        f'{requester_email} is asking you to check the shared shopping list on Grocery List.\n\n'
+        f'Sign in to review and update the list: {login_url}\n'
+    )
+    send_email(to_email, subject, text_body)
+
+
 _INSECURE_DEFAULT_KEY = 'dev-secret-key-change-me'
 
 
@@ -395,6 +423,7 @@ def create_app(config_overrides=None):
 
     def clone_defaults_to_user(user):
         created_stores = 0
+        household = get_or_create_household_for_user(user)
 
         templates = DefaultStoreTemplate.query.order_by(*default_store_ordering()).all()
         for index, template in enumerate(templates, start=1):
@@ -402,6 +431,7 @@ def create_app(config_overrides=None):
                 name=template.name,
                 sort_order=index * 10,
                 user_id=user.id,
+                household_id=household.id,
                 template_store_id=template.id,
             )
             db.session.add(store)
@@ -416,10 +446,12 @@ def create_app(config_overrides=None):
             return None
 
         next_sort_order = (db.session.query(db.func.max(Store.sort_order)).filter_by(user_id=user.id).scalar() or 0) + 10
+        household = get_or_create_household_for_user(user)
         store = Store(
             name=template.name,
             sort_order=next_sort_order,
             user_id=user.id,
+            household_id=household.id,
             template_store_id=template.id,
         )
         db.session.add(store)
@@ -431,8 +463,12 @@ def create_app(config_overrides=None):
         if unknown_store is not None:
             return unknown_store
 
+        user = db.session.get(User, user_id)
+        household_id = None
+        if user is not None:
+            household_id = get_or_create_household_for_user(user).id
         next_sort_order = (db.session.query(db.func.max(Store.sort_order)).filter_by(user_id=user_id).scalar() or 0) + 10
-        unknown_store = Store(name=UNKNOWN_STORE_NAME, sort_order=next_sort_order, user_id=user_id)
+        unknown_store = Store(name=UNKNOWN_STORE_NAME, sort_order=next_sort_order, user_id=user_id, household_id=household_id)
         db.session.add(unknown_store)
         db.session.flush()
         return unknown_store
@@ -456,6 +492,7 @@ def create_app(config_overrides=None):
             if store is not None:
                 store_id = store.id
 
+        household = get_or_create_household_for_user(user)
         item = Item(
             name=template.name,
             quantity=template.quantity,
@@ -465,6 +502,7 @@ def create_app(config_overrides=None):
             price=Decimal('0.00'),
             checked=False,
             user_id=user.id,
+            household_id=household.id,
             store_id=store_id,
             template_item_id=template.id,
         )
@@ -663,6 +701,7 @@ def create_app(config_overrides=None):
     def import_default_items_for_user(user):
         created_stores = ensure_user_has_default_stores(user)
         changed = deduplicate_user_items_for_user(user.id)
+        household = get_or_create_household_for_user(user)
         templates = DefaultItemTemplate.query.order_by(
             db.func.lower(DefaultItemTemplate.name).asc(),
             DefaultItemTemplate.id.asc(),
@@ -700,6 +739,7 @@ def create_app(config_overrides=None):
                     price=Decimal('0.00'),
                     checked=False,
                     user_id=user.id,
+                    household_id=household.id,
                     store_id=store_id,
                     template_item_id=template.id,
                 )
@@ -806,6 +846,45 @@ def create_app(config_overrides=None):
             query = query.filter(DefaultCategoryTemplate.id != exclude_category_id)
         return query.first()
 
+    def get_or_create_household_for_user(user):
+        """Return the user's primary household, creating one if none exists."""
+        member = HouseholdMember.query.filter_by(user_id=user.id).order_by(
+            HouseholdMember.id.asc()
+        ).first()
+        if member is not None:
+            return db.session.get(Household, member.household_id)
+        household = Household()
+        db.session.add(household)
+        db.session.flush()
+        membership = HouseholdMember(
+            household_id=household.id,
+            user_id=user.id,
+            role='owner',
+            notifications_enabled=True,
+        )
+        db.session.add(membership)
+        db.session.flush()
+        return household
+
+    def find_household_item_by_name(household_id, name, *, user_id=None, exclude_item_id=None):
+        """Find an item by name within a household.
+
+        When *user_id* is supplied a fallback clause is added so that items
+        that were created before household_id was backfilled (household_id IS
+        NULL, user_id matches) are also considered.
+        """
+        if user_id is not None:
+            scope = db.or_(
+                Item.household_id == household_id,
+                db.and_(Item.household_id.is_(None), Item.user_id == user_id),
+            )
+        else:
+            scope = (Item.household_id == household_id)
+        query = Item.query.filter(scope, db.func.lower(Item.name) == name.lower())
+        if exclude_item_id is not None:
+            query = query.filter(Item.id != exclude_item_id)
+        return query.first()
+
     def parse_category_name(value):
         category, error = normalize_text_field(value, 'category', 60)
         if error:
@@ -829,6 +908,10 @@ def create_app(config_overrides=None):
             return None, error_response('store_id must be an integer or null', 400)
 
         store = Store.query.filter_by(id=store_id, user_id=current_user.id).first()
+        if store is None:
+            # Fall back to household-scoped lookup for stores created after migration
+            household = get_or_create_household_for_user(current_user)
+            store = Store.query.filter_by(id=store_id, household_id=household.id).first()
         if store is None:
             return None, error_response('store_id must reference an existing store', 400)
 
@@ -1632,7 +1715,12 @@ def create_app(config_overrides=None):
         changed = deduplicate_user_items_for_user(current_user.id)
         if changed:
             db.session.commit()
-        items = Item.query.filter_by(user_id=current_user.id).order_by(db.func.lower(Item.name).asc(), Item.id.asc()).all()
+        household = get_or_create_household_for_user(current_user)
+        _item_scope = db.or_(
+            Item.household_id == household.id,
+            db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+        )
+        items = Item.query.filter(_item_scope).order_by(db.func.lower(Item.name).asc(), Item.id.asc()).all()
         return jsonify([serialize(item) for item in items])
 
     @app.route('/api/items', methods=['POST'])
@@ -1644,10 +1732,11 @@ def create_app(config_overrides=None):
 
         if not data:
             return error_response('invalid JSON body', 400)
+        household = get_or_create_household_for_user(current_user)
         name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             return error
-        if find_user_item_by_name(current_user.id, name) is not None:
+        if find_household_item_by_name(household.id, name, user_id=current_user.id) is not None:
             return error_response('item already exists', 409)
         quantity, error = parse_quantity(data.get('quantity'))
         if error:
@@ -1670,12 +1759,21 @@ def create_app(config_overrides=None):
                 return error_response('template_item_id must be an integer', 400)
             if db.session.get(DefaultItemTemplate, template_item_id) is None:
                 return error_response('template_item_id does not reference a known template', 404)
-            if Item.query.filter_by(user_id=current_user.id, template_item_id=template_item_id).first() is not None:
+            _create_scope = db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            )
+            if Item.query.filter(_create_scope, Item.template_item_id == template_item_id).first() is not None:
                 return error_response('item already exists', 409)
 
-        next_sort_order = (db.session.query(db.func.max(Item.sort_order)).filter_by(user_id=current_user.id).scalar() or 0) + 10
+        next_sort_order = (db.session.query(db.func.max(Item.sort_order)).filter(
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            )
+        ).scalar() or 0) + 10
         price = parse_price(data.get('price')) if data else None
-        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id, template_item_id=template_item_id)
+        item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id, household_id=household.id, template_item_id=template_item_id)
         db.session.add(item)
         db.session.commit()
         return jsonify(serialize(item)), 201
@@ -1683,7 +1781,14 @@ def create_app(config_overrides=None):
     @app.route('/api/items/<int:item_id>', methods=['PATCH'])
     @login_required
     def api_items_update(item_id):
-        item = Item.query.filter_by(id=item_id, user_id=current_user.id).first_or_404()
+        household = get_or_create_household_for_user(current_user)
+        item = Item.query.filter(
+            Item.id == item_id,
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            ),
+        ).first_or_404()
         data, error = get_json_body()
         if error:
             return error
@@ -1709,7 +1814,7 @@ def create_app(config_overrides=None):
             name, error = normalize_text_field(data.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
             if error:
                 return error
-            if find_user_item_by_name(current_user.id, name, exclude_item_id=item.id) is not None:
+            if find_household_item_by_name(household.id, name, user_id=current_user.id, exclude_item_id=item.id) is not None:
                 return error_response('item already exists', 409)
             item.name = name
         if 'quantity' in data:
@@ -1742,7 +1847,14 @@ def create_app(config_overrides=None):
     @app.route('/api/items/<int:item_id>', methods=['DELETE'])
     @login_required
     def api_items_delete(item_id):
-        item = Item.query.filter_by(id=item_id, user_id=current_user.id).first_or_404()
+        household = get_or_create_household_for_user(current_user)
+        item = Item.query.filter(
+            Item.id == item_id,
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            ),
+        ).first_or_404()
         db.session.delete(item)
         db.session.commit()
         return '', 204
@@ -1751,7 +1863,13 @@ def create_app(config_overrides=None):
     @login_required
     def api_stores_list():
         ensure_user_has_default_stores(current_user)
-        stores = Store.query.filter_by(user_id=current_user.id).order_by(Store.sort_order.asc(), Store.name.asc(), Store.id.asc()).all()
+        household = get_or_create_household_for_user(current_user)
+        stores = Store.query.filter(
+            db.or_(
+                Store.household_id == household.id,
+                db.and_(Store.household_id.is_(None), Store.user_id == current_user.id),
+            )
+        ).order_by(Store.sort_order.asc(), Store.name.asc(), Store.id.asc()).all()
         return jsonify([serialize_store(store) for store in stores])
 
     @app.route('/api/stores', methods=['POST'])
@@ -1879,6 +1997,104 @@ def create_app(config_overrides=None):
                 'overwritten_count': len(overwritten_item_ids),
             }
         )
+
+    # ------------------------------------------------------------------
+    # Stage 3: Household invitation flow
+    # ------------------------------------------------------------------
+
+    @app.route('/api/account/invite', methods=['POST'])
+    @login_required
+    def api_account_invite():
+        data, error = get_json_body()
+        if error:
+            return error
+        if data is None:
+            return error_response('invalid JSON body', 400)
+        raw_email = data.get('email', '')
+        if not raw_email or not isinstance(raw_email, str):
+            return error_response('email is required', 400)
+        invited_email = raw_email.strip().lower()
+        parts = invited_email.split('@', 1)
+        if len(parts) != 2 or not parts[0] or '.' not in parts[1] or not parts[1].split('.', 1)[1]:
+            return error_response('invalid email address', 400)
+        if invited_email == current_user.email:
+            return error_response('you cannot invite yourself', 400)
+        household = get_or_create_household_for_user(current_user)
+        existing = HouseholdInvite.query.filter_by(
+            household_id=household.id,
+            invited_email=invited_email,
+            consumed=False,
+        ).filter(
+            HouseholdInvite.expires_at > datetime.now(timezone.utc).replace(tzinfo=None)
+        ).first()
+        if existing is not None:
+            return error_response('an active invite already exists for that email', 409)
+        invite = HouseholdInvite.make(
+            household_id=household.id,
+            invited_email=invited_email,
+            created_by_user_id=current_user.id,
+        )
+        db.session.add(invite)
+        db.session.commit()
+        send_household_invite_email(invited_email, current_user.email, invite.token)
+        return jsonify({'message': 'invite sent'}), 200
+
+    _NOTIFY_COOLDOWN_SECONDS = 300  # 5 minutes
+
+    @app.route('/api/household/notify', methods=['POST'])
+    @login_required
+    def api_household_notify():
+        household = get_or_create_household_for_user(current_user)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if household.last_notified_at is not None:
+            elapsed = (now - household.last_notified_at).total_seconds()
+            if elapsed < _NOTIFY_COOLDOWN_SECONDS:
+                wait = int(_NOTIFY_COOLDOWN_SECONDS - elapsed)
+                return error_response(f'please wait {wait} seconds before sending another notification', 429)
+        members = HouseholdMember.query.filter_by(
+            household_id=household.id,
+            notifications_enabled=True,
+        ).all()
+        member_user_ids = [m.user_id for m in members if m.user_id != current_user.id]
+        recipients = User.query.filter(User.id.in_(member_user_ids)).all() if member_user_ids else []
+        for recipient in recipients:
+            send_household_notify_email(recipient.email, current_user.email)
+        household.last_notified_at = now
+        db.session.commit()
+        return jsonify({'message': 'notifications sent', 'recipients': len(recipients)}), 200
+
+    @app.route('/join/<string:token>')
+    def join_household(token):
+        invite = HouseholdInvite.query.filter_by(token=token).first()
+        if invite is None or invite.consumed:
+            flash('This invitation link is invalid or has already been used.', 'error')
+            return redirect(url_for('login'))
+        if invite.is_expired:
+            flash('This invitation link has expired.', 'error')
+            return redirect(url_for('login'))
+        invited_user = User.query.filter_by(email=invite.invited_email).first()
+        if invited_user is None:
+            flash(
+                'You need a Grocery List account before you can accept an invitation. '
+                'Request access, then follow the invitation link again after your account is approved.',
+                'info',
+            )
+            return redirect(url_for('login'))
+        already_member = HouseholdMember.query.filter_by(
+            household_id=invite.household_id,
+            user_id=invited_user.id,
+        ).first()
+        if already_member is None:
+            db.session.add(HouseholdMember(
+                household_id=invite.household_id,
+                user_id=invited_user.id,
+                role='member',
+                notifications_enabled=True,
+            ))
+        invite.consumed = True
+        db.session.commit()
+        flash('Invitation accepted. Sign in to access the shared shopping list.', 'success')
+        return redirect(url_for('login'))
 
     return app
 

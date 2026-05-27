@@ -6,7 +6,7 @@ from werkzeug.serving import make_server
 
 from app.db import db
 from app.main import create_app
-from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Item, Store, User
+from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Household, HouseholdInvite, HouseholdMember, Item, Store, User
 
 
 @pytest.fixture(scope="session")
@@ -173,6 +173,26 @@ def create_default_categories(app):
 
 
 @pytest.fixture
+def create_household(app):
+    def _create_household(owner_user_id, *, role='owner'):
+        with app.app_context():
+            household = Household()
+            db.session.add(household)
+            db.session.flush()
+            member = HouseholdMember(
+                household_id=household.id,
+                user_id=owner_user_id,
+                role=role,
+                notifications_enabled=True,
+            )
+            db.session.add(member)
+            db.session.commit()
+            return {'household_id': household.id, 'member_id': member.id}
+
+    return _create_household
+
+
+@pytest.fixture
 def live_server(app):
     server = make_server('127.0.0.1', 0, app)
     server_thread = Thread(target=server.serve_forever)
@@ -215,5 +235,8 @@ def clean_db_between_tests(app):
         DefaultStoreTemplate.query.delete()
         DefaultCategoryTemplate.query.delete()
         AppSetting.query.delete()
+        HouseholdInvite.query.delete()
+        HouseholdMember.query.delete()
+        Household.query.delete()
         User.query.delete()
         db.session.commit()

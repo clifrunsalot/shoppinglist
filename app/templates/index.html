@@ -572,6 +572,42 @@
             </div>
           </div>
 
+          <div class="border-t pt-6">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-700">Invite to Household</label>
+              <p class="mt-1 text-xs leading-5 text-gray-500">Send an invitation link to someone so they can join your shared shopping list.</p>
+            </div>
+            <div class="space-y-3">
+              <input x-model="inviteEmail" type="email" placeholder="partner@example.com" autocomplete="email"
+                class="theme-field w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+              <template x-if="inviteMessage.text">
+                <div class="rounded-2xl border px-3 py-2 text-sm"
+                  :class="inviteMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
+                  x-text="inviteMessage.text"></div>
+              </template>
+              <button @click="sendInvite()" :disabled="inviteSaving"
+                class="theme-primary w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-50"
+                x-text="inviteSaving ? 'Sending Invite...' : 'Send Invite'"></button>
+            </div>
+          </div>
+
+          <div class="border-t pt-6">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-700">Notify Household</label>
+              <p class="mt-1 text-xs leading-5 text-gray-500">Send a quick nudge to your household members asking them to check the list. Limited to once every 5 minutes.</p>
+            </div>
+            <div class="space-y-3">
+              <template x-if="notifyMessage.text">
+                <div class="rounded-2xl border px-3 py-2 text-sm"
+                  :class="notifyMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
+                  x-text="notifyMessage.text"></div>
+              </template>
+              <button data-testid="settings-notify-household" @click="notifyHousehold()" :disabled="notifySaving"
+                class="theme-primary w-full rounded-lg px-3 py-2 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-50"
+                x-text="notifySaving ? 'Sending...' : 'Notify Household'"></button>
+            </div>
+          </div>
+
           <div class="border-t pt-6 text-center">
             <a href="{{ url_for('help_page', ref='settings') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -854,6 +890,11 @@
         passwordSaving: false,
         importDefaultsMessage: { type: '', text: '' },
         importDefaultsSaving: false,
+        inviteEmail: '',
+        inviteMessage: { type: '', text: '' },
+        inviteSaving: false,
+        notifyMessage: { type: '', text: '' },
+        notifySaving: false,
         itemSaveDebounceMs: 400,
         pendingItemChanges: {},
         pendingItemTimers: {},
@@ -1722,6 +1763,45 @@
             this.passwordMessage = { type: 'error', text: err.message };
           } finally {
             this.passwordSaving = false;
+          }
+        },
+
+        async sendInvite() {
+          this.inviteSaving = true;
+          this.inviteMessage = { type: '', text: '' };
+          try {
+            await this.requestJson('/api/account/invite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: this.inviteEmail.trim() }),
+            }, 'Unable to send invitation.');
+            this.inviteMessage = { type: 'success', text: 'Invitation sent!' };
+            this.inviteEmail = '';
+          } catch (err) {
+            this.inviteMessage = { type: 'error', text: err.message };
+          } finally {
+            this.inviteSaving = false;
+          }
+        },
+
+        async notifyHousehold() {
+          this.notifySaving = true;
+          this.notifyMessage = { type: '', text: '' };
+          try {
+            const payload = await this.requestJson('/api/household/notify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({}),
+            }, 'Unable to send notification.');
+            const count = payload.recipients;
+            this.notifyMessage = {
+              type: 'success',
+              text: count === 0 ? 'No other members to notify.' : `Notified ${count} household member${count !== 1 ? 's' : ''}.`,
+            };
+          } catch (err) {
+            this.notifyMessage = { type: 'error', text: err.message };
+          } finally {
+            this.notifySaving = false;
           }
         },
 

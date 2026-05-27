@@ -35,6 +35,13 @@ class User(UserMixin, db.Model):
     items = db.relationship('Item', backref='user', lazy=True)
     stores = db.relationship('Store', backref='user', lazy=True)
     audit_entries = db.relationship('AuditLog', backref='actor', lazy=True, foreign_keys='AuditLog.actor_user_id')
+    household_memberships = db.relationship(
+        'HouseholdMember',
+        lazy=True,
+        primaryjoin='User.id == HouseholdMember.user_id',
+        foreign_keys='HouseholdMember.user_id',
+        cascade='all, delete-orphan',
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -55,6 +62,7 @@ class Store(db.Model):
     sort_order = db.Column(db.Integer, nullable=False, default=0)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_store_id = db.Column(db.Integer, db.ForeignKey('default_store_templates.id'), nullable=True)
+    household_id = db.Column(db.Integer, db.ForeignKey('households.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
 
 
@@ -73,6 +81,7 @@ class Item(db.Model):
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_item_id = db.Column(db.Integer, db.ForeignKey('default_item_templates.id'), nullable=True)
+    household_id = db.Column(db.Integer, db.ForeignKey('households.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=_utcnow)
 
 
@@ -142,6 +151,7 @@ class AuditLog(db.Model):
 
 
 _SIGNUP_TOKEN_TTL_MINUTES = 30
+_HOUSEHOLD_INVITE_TTL_DAYS = 7
 
 
 class SignupToken(db.Model):
@@ -169,4 +179,61 @@ class SignupToken(db.Model):
             token=secrets.token_urlsafe(32),
             expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=_SIGNUP_TOKEN_TTL_MINUTES),
             consumed=False,
+        )
+
+
+class Household(db.Model):
+    __tablename__ = 'households'
+
+    id = db.Column(db.Integer, primary_key=True)
+    created_at = db.Column(db.DateTime, default=_utcnow)
+    last_notified_at = db.Column(db.DateTime, nullable=True)
+
+    members = db.relationship('HouseholdMember', lazy=True)
+
+
+class HouseholdMember(db.Model):
+    __tablename__ = 'household_members'
+
+    __table_args__ = (
+        db.UniqueConstraint('household_id', 'user_id', name='uq_household_member'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    household_id = db.Column(db.Integer, db.ForeignKey('households.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='member')
+    notifications_enabled = db.Column(db.Boolean, nullable=False, default=True)
+    joined_at = db.Column(db.DateTime, default=_utcnow)
+
+
+class HouseholdInvite(db.Model):
+    __tablename__ = 'household_invites'
+
+    id = db.Column(db.Integer, primary_key=True)
+    household_id = db.Column(db.Integer, db.ForeignKey('households.id'), nullable=False)
+    invited_email = db.Column(db.String(255), nullable=False)
+    token = db.Column(db.String(100), nullable=False, unique=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    consumed = db.Column(db.Boolean, nullable=False, default=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=_utcnow)
+
+    @property
+    def is_expired(self):
+        return datetime.now(timezone.utc).replace(tzinfo=None) >= self.expires_at
+
+    @property
+    def is_valid(self):
+        return not self.consumed and not self.is_expired
+
+    @staticmethod
+    def make(household_id, invited_email, created_by_user_id):
+        return HouseholdInvite(
+            household_id=household_id,
+            invited_email=invited_email,
+            token=secrets.token_urlsafe(32),
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=_HOUSEHOLD_INVITE_TTL_DAYS),
+            consumed=False,
+            created_by_user_id=created_by_user_id,
         )
