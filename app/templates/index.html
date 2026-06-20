@@ -1354,7 +1354,7 @@
           return { [field]: normalizedValue };
         },
 
-        stageItemChanges(itemId, payloadChanges, { immediate = false } = {}) {
+        stageItemChanges(itemId, payloadChanges, { immediate = false, localChanges = null } = {}) {
           if (!payloadChanges) {
             return;
           }
@@ -1366,7 +1366,7 @@
             }
           }
 
-          this.applyOptimisticItemUpdate(itemId, this.toLocalItemChanges(payloadChanges));
+          this.applyOptimisticItemUpdate(itemId, localChanges || this.toLocalItemChanges(payloadChanges));
           this.pendingItemChanges[itemId] = {
             ...(this.pendingItemChanges[itemId] || {}),
             ...payloadChanges,
@@ -1429,7 +1429,11 @@
             return;
           }
 
-          this.stageItemChanges(itemId, payloadChanges);
+          const localChanges = (field === 'name' || field === 'unit') && typeof value === 'string'
+            ? { [field]: value }
+            : null;
+
+          this.stageItemChanges(itemId, payloadChanges, { localChanges });
         },
 
         async commitQuantityField(itemId, value) {

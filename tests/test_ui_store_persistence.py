@@ -507,6 +507,43 @@ def test_detail_sheet_stays_open_after_multiple_edits(browser_page, live_server,
     expect(unit_input).to_have_value('bag')
 
 
+def test_detail_sheet_name_edit_allows_spaces_mid_edit(browser_page, live_server, seeded_store_persistence_data, app):
+    sync_api = pytest.importorskip('playwright.sync_api')
+    expect = sync_api.expect
+    page = browser_page
+
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+
+    apples_id = seeded_store_persistence_data['item_ids']['apples']
+    apples_row = page.get_by_test_id(f'item-row-{apples_id}')
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+
+    name_input = page.get_by_test_id('detail-name-input')
+    name_input.click()
+    name_input.press('End')
+    name_input.press('Space')
+    name_input.press_sequentially('Gala')
+    name_input.blur()
+
+    expect(name_input).to_have_value('Apples Gala')
+
+    page.reload(wait_until='domcontentloaded')
+    apples_row = page.get_by_test_id(f'item-row-{apples_id}')
+    apples_row.wait_for()
+    apples_row.click()
+    open_detail_panel(page)
+    expect(page.get_by_test_id('detail-name-input')).to_have_value('Apples Gala')
+
+    with app.app_context():
+        apples = db.session.get(Item, apples_id)
+        assert apples.name == 'Apples Gala'
+
+
 def test_detail_sheet_allows_manual_quantity_updates(browser_page, live_server, seeded_store_persistence_data, app):
     sync_api = pytest.importorskip('playwright.sync_api')
     expect = sync_api.expect
