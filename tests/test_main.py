@@ -78,7 +78,8 @@ def test_index_page_uses_debounced_item_save_hooks(auth_client):
     response = auth_client.get('/')
 
     assert response.status_code == 200
-    assert b":data-item-id=\"selectedItem.id\" x-model=\"selectedItem.name\" @input=\"stageItemField(Number($el.dataset.itemId), 'name', $event.target.value)\"" in response.data
+    assert b":data-item-id=\"selectedItem.id\" x-model=\"selectedItem.name\" @blur=\"commitNameField(Number($el.dataset.itemId), $event.target.value)\"" in response.data
+    assert b'async commitNameField(itemId, value)' in response.data
     assert b'x-effect="syncSelectedStoreControl()"' in response.data
     assert b'x-effect="syncSelectedCategoryControl()"' in response.data
     assert b"@change=\"selectedItem.store_value = $event.target.value; saveStoreSelection(Number($el.dataset.itemId), selectedItem.store_value === '' ? null : Number(selectedItem.store_value))\"" in response.data
@@ -608,6 +609,54 @@ def test_items_api_deletes_item(auth_client, auth_user, app):
 
     with app.app_context():
         assert db.session.get(Item, item_id) is None
+
+
+def test_items_api_delete_all(auth_client, auth_user, app):
+    with app.app_context():
+        item1 = Item(name='Bread', price=Decimal('1.25'), user_id=auth_user['id'])
+        item2 = Item(name='Milk', price=Decimal('2.50'), user_id=auth_user['id'])
+        item3 = Item(name='Eggs', price=Decimal('3.00'), user_id=auth_user['id'])
+        db.session.add_all([item1, item2, item3])
+        db.session.commit()
+        item_ids = [item1.id, item2.id, item3.id]
+
+    response = auth_client.post('/api/items/delete-all', json={})
+
+    assert response.status_code == 200
+    assert response.get_json() == {'deleted_count': 3}
+
+    with app.app_context():
+        assert db.session.get(Item, item_ids[0]) is None
+        assert db.session.get(Item, item_ids[1]) is None
+        assert db.session.get(Item, item_ids[2]) is None
+
+
+def test_items_api_delete_all_empty_list(auth_client):
+    response = auth_client.post('/api/items/delete-all', json={})
+
+    assert response.status_code == 200
+    assert response.get_json() == {'deleted_count': 0}
+
+
+def test_items_api_delete_all_deletes_only_user_items(auth_client, auth_user, create_user, app):
+    other_user = create_user('other@example.com')
+
+    with app.app_context():
+        user_item = Item(name='User Item', price=Decimal('1.00'), user_id=auth_user['id'])
+        other_item = Item(name='Other Item', price=Decimal('2.00'), user_id=other_user['id'])
+        db.session.add_all([user_item, other_item])
+        db.session.commit()
+        user_item_id = user_item.id
+        other_item_id = other_item.id
+
+    response = auth_client.post('/api/items/delete-all', json={})
+
+    assert response.status_code == 200
+    assert response.get_json() == {'deleted_count': 1}
+
+    with app.app_context():
+        assert db.session.get(Item, user_item_id) is None
+        assert db.session.get(Item, other_item_id) is not None
 
 
 def test_user_cannot_access_another_users_item(auth_client, auth_user, create_user, app):

@@ -222,6 +222,15 @@
       transform-origin: center;
     }
 
+    .swipe-delete-track {
+      transition: transform 190ms ease;
+      touch-action: pan-y;
+    }
+
+    .swipe-delete-track.is-dragging {
+      transition: none;
+    }
+
     @media (hover: none), (pointer: coarse) {
       .press-feedback:active {
         transform: scale(0.96);
@@ -454,35 +463,52 @@
     </template>
     <ul class="space-y-2">
       <template x-for="item in filteredItems" :key="item.id">
-        <li :data-testid="`item-row-${item.id}`" @click="selectItem(item, 'click')" @touchend.stop.prevent="selectItem(item, 'touch')"
-          @keydown.enter.prevent="selectItem(item, 'keyboard')" @keydown.space.prevent="selectItem(item, 'keyboard')" tabindex="0" role="button"
-          class="press-feedback-row bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all"
-          :class="selectedItem && selectedItem.id === item.id
-                      ? 'theme-selected'
-                      : 'hover:shadow-md'">
-          <!-- Checkbox -->
-          <button type="button" @click.stop="checkboxClick(item)" @touchend.stop
-            class="press-feedback inline-flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none flex-shrink-0 transition-transform"
-            :aria-label="item.checked ? 'Mark pending' : 'Mark done'">
-            <span class="pointer-events-none" x-text="item.checked ? '✅' : '⬜'"></span>
-          </button>
-          <!-- Info -->
-          <div class="flex-1 min-w-0">
-            <p class="font-medium truncate transition-colors"
-              :class="item.checked ? 'line-through text-gray-400' : 'text-gray-800'" x-text="item.name"></p>
-            <p class="text-xs text-gray-400 truncate mt-0.5" x-text="[item.quantity ? item.quantity + (item.unit ? ' - ' + item.unit : '') : '',
-                         item.category].filter(Boolean).join(' · ')"></p>
+        <li :data-testid="`item-row-${item.id}`" class="relative overflow-hidden rounded-2xl">
+          <div class="absolute inset-y-0 right-0 flex">
+            <button type="button" :data-testid="`item-swipe-delete-${item.id}`" @click.stop="queueItemDelete(item)" @pointerdown.stop
+              :tabindex="swipeOpenItemId === item.id ? 0 : -1"
+              class="inline-flex w-24 items-center justify-center bg-red-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-red-600"
+              aria-label="Delete item">Delete</button>
           </div>
-          <!-- Category badge -->
-          <template x-if="item.category">
-            <span
-              class="theme-badge hidden sm:inline-block text-xs rounded-full px-2 py-0.5 font-medium flex-shrink-0"
-              x-text="item.category"></span>
-          </template>
-          <!-- Delete -->
-          <button type="button" @click.stop="deleteItem(item)" @touchend.stop
-            class="text-gray-300 hover:text-red-400 text-xl leading-none flex-shrink-0 transition-colors"
-            aria-label="Delete item">✕</button>
+
+          <div @click="onRowClick(item)"
+            @pointerdown="handleRowPointerDown($event, item.id)"
+            @pointermove="handleRowPointerMove($event, item.id)"
+            @pointerup="handleRowPointerUp($event, item)"
+            @pointercancel="handleRowPointerCancel($event, item.id)"
+            @keydown.enter.prevent="selectItem(item, 'keyboard')"
+            @keydown.space.prevent="selectItem(item, 'keyboard')"
+            tabindex="0" role="button"
+            class="swipe-delete-track press-feedback-row bg-white rounded-2xl shadow-sm px-4 py-3 flex items-center gap-3 cursor-pointer transition-all"
+            :class="[
+              selectedItem && selectedItem.id === item.id ? 'theme-selected' : 'hover:shadow-md',
+              isSwipeDragging(item.id) ? 'is-dragging' : ''
+            ]"
+            :style="swipeRowStyle(item.id)">
+            <!-- Checkbox -->
+            <button type="button" @click.stop="checkboxClick(item)" @pointerdown.stop
+              class="press-feedback inline-flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none flex-shrink-0 transition-transform"
+              :aria-label="item.checked ? 'Mark pending' : 'Mark done'">
+              <span class="pointer-events-none" x-text="item.checked ? '✅' : '⬜'"></span>
+            </button>
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+              <p class="font-medium truncate transition-colors"
+                :class="item.checked ? 'line-through text-gray-400' : 'text-gray-800'" x-text="item.name"></p>
+              <p class="text-xs text-gray-400 truncate mt-0.5" x-text="[item.quantity ? item.quantity + (item.unit ? ' - ' + item.unit : '') : '',
+                           item.category].filter(Boolean).join(' · ')"></p>
+            </div>
+            <!-- Category badge -->
+            <template x-if="item.category">
+              <span
+                class="theme-badge hidden sm:inline-block text-xs rounded-full px-2 py-0.5 font-medium flex-shrink-0"
+                x-text="item.category"></span>
+            </template>
+            <!-- Desktop delete -->
+            <button type="button" :data-testid="`item-delete-${item.id}`" @click.stop="queueItemDelete(item)" @pointerdown.stop
+              class="hidden sm:inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50"
+              aria-label="Delete item">Delete</button>
+          </div>
         </li>
       </template>
     </ul>
@@ -608,6 +634,18 @@
             </div>
           </div>
 
+          <div class="border-t pt-6">
+            <div class="mb-3">
+              <label class="block text-sm font-medium text-gray-700">Delete All Items</label>
+              <p class="mt-1 text-xs leading-5 text-gray-500">Permanently remove all items from your shopping list. This action cannot be undone.</p>
+            </div>
+            <div class="space-y-3">
+              <button data-testid="settings-delete-all" @click="showDeleteAllConfirm = true" :disabled="!items.length"
+                class="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                x-text="items.length ? 'Delete All Items' : 'No items to delete'"></button>
+            </div>
+          </div>
+
           <div class="border-t pt-6 text-center">
             <a href="{{ url_for('help_page', ref='settings') }}" class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-800 transition-colors">
               <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -639,6 +677,34 @@
       <span>Add Item</span>
     </button>
   </div>
+
+  <template x-if="pendingDelete">
+    <div data-testid="delete-undo-toast" class="fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] z-40 rounded-2xl border border-gray-200 bg-white/95 px-4 py-3 shadow-xl backdrop-blur-sm sm:inset-x-auto sm:right-4 sm:w-[22rem]">
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-sm font-medium text-gray-700">Item deleted</p>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="undoPendingDelete()" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100">Undo</button>
+          <button type="button" @click="commitPendingDelete()" class="rounded-lg px-3 py-1.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-50">Dismiss</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="showDeleteAllConfirm">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="bg-white rounded-2xl shadow-2xl max-w-sm p-6 animate-in">
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Delete All Items?</h3>
+        <p class="text-sm text-gray-600 mb-6">This will permanently remove all <span x-text="items.length"></span> item<span x-show="items.length !== 1">s</span> from your shopping list. This action cannot be undone.</p>
+        <div class="flex gap-3 justify-end">
+          <button type="button" @click="showDeleteAllConfirm = false" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50">
+            Cancel
+          </button>
+          <button type="button" @click="deleteAllItems()" :disabled="deleteAllSaving" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-50"
+            x-text="deleteAllSaving ? 'Deleting...' : 'Delete All'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <template x-if="panelOpen">
     <div class="fixed inset-x-0 top-0 z-50 flex items-end bg-black/35 backdrop-blur-sm sm:items-stretch sm:justify-end sm:bg-transparent sm:backdrop-blur-0 sm:pointer-events-none"
@@ -686,7 +752,7 @@
                   <div class="space-y-4 text-sm">
                     <div>
                       <p class="mb-1 text-xs text-gray-400">Name</p>
-                      <input data-testid="detail-name-input" :data-item-id="selectedItem.id" x-model="selectedItem.name" @input="stageItemField(Number($el.dataset.itemId), 'name', $event.target.value)" @blur="flushItemChanges(Number($el.dataset.itemId))"
+                      <input data-testid="detail-name-input" :data-item-id="selectedItem.id" x-model="selectedItem.name" @blur="commitNameField(Number($el.dataset.itemId), $event.target.value)"
                         @keydown.enter="$el.blur()" class="theme-field w-full rounded-xl border border-gray-200 px-3 py-2 font-semibold text-gray-800" />
                     </div>
 
@@ -871,6 +937,9 @@
         activeStoreFilterId: null,
         keyboardOffset: 0,
         storeFilterOpen: false,
+        swipeOpenItemId: null,
+        swipeRevealWidth: 96,
+        swipeState: { activeItemId: null, startX: 0, startY: 0, deltaX: 0, moved: false, isHorizontal: false },
         searchQuery: '',
         lastTouchSelectAt: 0,
         detailTab: 'detail',
@@ -909,6 +978,10 @@
         itemSelectionPromise: Promise.resolve(),
         selectedItemOutdated: false,
         itemConflictMessage: '',
+        pendingDelete: null,
+        deleteUndoDurationMs: 5000,
+        showDeleteAllConfirm: false,
+        deleteAllSaving: false,
 
         get categoryFilters() {
           const itemCategories = new Set(this.items.map(item => item.category).filter(Boolean));
@@ -1180,6 +1253,7 @@
         },
 
         async dismissCollapsedSelection() {
+          this.closeSwipeActions();
           if (!this.selectedItem || this.panelOpen) {
             return;
           }
@@ -1189,14 +1263,19 @@
         },
 
         async toggleSettings() {
+          this.closeSwipeActions();
           if (!this.showSettings) {
             await this.dismissCollapsedSelection();
+            if (this.pendingDelete) {
+              await this.commitPendingDelete();
+            }
           }
           this.storeFilterOpen = false;
           this.showSettings = !this.showSettings;
         },
 
         async openAddPanel() {
+          this.closeSwipeActions();
           await this.flushSelectedItemChanges();
           this.selectedItem = null;
           this.panelMode = 'add';
@@ -1208,6 +1287,7 @@
         },
 
         openDetailPanel(item = null) {
+          this.closeSwipeActions();
           const nextItem = item || this.selectedItem;
           if (!nextItem) {
             return;
@@ -1230,6 +1310,7 @@
         },
 
         async closePanel() {
+          this.closeSwipeActions();
           if (this.panelMode === 'detail') {
             await this.flushSelectedItemChanges();
           }
@@ -1240,6 +1321,7 @@
         },
 
         async closeSelectedItem() {
+          this.closeSwipeActions();
           await this.flushSelectedItemChanges();
           this.panelOpen = false;
           this.panelMode = null;
@@ -1451,6 +1533,25 @@
           }
 
           this.stageItemChanges(itemId, payloadChanges, { immediate: true });
+          await this.flushItemChanges(itemId);
+        },
+
+        async commitNameField(itemId, value) {
+          if (!itemId) {
+            return;
+          }
+
+          this.itemConflictMessage = '';
+          const payloadChanges = this.normalizeItemPatch('name', value);
+          if (!payloadChanges) {
+            const currentItem = this.getItemStateSnapshot(itemId);
+            if (currentItem && this.selectedItem && this.selectedItem.id === itemId) {
+              this.setSelectedItemFromState(currentItem);
+            }
+            return;
+          }
+
+          this.stageItemChanges(itemId, payloadChanges, { immediate: true, localChanges: { name: value } });
           await this.flushItemChanges(itemId);
         },
 
@@ -1890,9 +1991,13 @@
         async silentlyRefreshItems() {
           try {
             const freshItems = await this.requestJson('/api/items', {}, '');
-            const freshById = new Map(freshItems.map(item => [item.id, item]));
+            const pendingDeleteId = this.pendingDelete?.itemId ?? null;
+            const filteredFreshItems = pendingDeleteId == null
+              ? freshItems
+              : freshItems.filter(item => item.id !== pendingDeleteId);
+            const freshById = new Map(filteredFreshItems.map(item => [item.id, item]));
             this.items = this.items.map(item => freshById.get(item.id) ?? item);
-            for (const fresh of freshItems) {
+            for (const fresh of filteredFreshItems) {
               if (!this.items.some(i => i.id === fresh.id)) {
                 this.items.push(fresh);
               }
@@ -1970,6 +2075,153 @@
           }
 
           return window.matchMedia('(min-width: 640px)').matches;
+        },
+
+        onRowClick(item) {
+          if (this.swipeOpenItemId === item.id) {
+            this.closeSwipeActions();
+            return;
+          }
+
+          this.selectItem(item, 'click');
+        },
+
+        swipeRowStyle(itemId) {
+          const translateX = this.rowTranslateX(itemId);
+          return `transform: translateX(${translateX}px)`;
+        },
+
+        rowTranslateX(itemId) {
+          if (this.swipeState.activeItemId === itemId) {
+            return Math.max(-this.swipeRevealWidth, Math.min(0, this.swipeState.deltaX));
+          }
+
+          if (this.swipeOpenItemId === itemId) {
+            return -this.swipeRevealWidth;
+          }
+
+          return 0;
+        },
+
+        isSwipeDragging(itemId) {
+          return this.swipeState.activeItemId === itemId && this.swipeState.isHorizontal;
+        },
+
+        resetSwipeTracking() {
+          this.swipeState = {
+            activeItemId: null,
+            startX: 0,
+            startY: 0,
+            deltaX: 0,
+            moved: false,
+            isHorizontal: false,
+          };
+        },
+
+        closeSwipeActions() {
+          this.swipeOpenItemId = null;
+          this.resetSwipeTracking();
+        },
+
+        handleRowPointerDown(event, itemId) {
+          if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+          }
+
+          event.currentTarget.setPointerCapture(event.pointerId);
+          this.swipeState = {
+            activeItemId: itemId,
+            startX: event.clientX,
+            startY: event.clientY,
+            deltaX: this.swipeOpenItemId === itemId ? -this.swipeRevealWidth : 0,
+            moved: false,
+            isHorizontal: false,
+          };
+
+          if (this.swipeOpenItemId !== null && this.swipeOpenItemId !== itemId) {
+            this.swipeOpenItemId = null;
+          }
+        },
+
+        handleRowPointerMove(event, itemId) {
+          if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+          }
+
+          if (this.swipeState.activeItemId !== itemId) {
+            return;
+          }
+
+          const dx = event.clientX - this.swipeState.startX;
+          const dy = event.clientY - this.swipeState.startY;
+
+          if (!this.swipeState.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) {
+            return;
+          }
+
+          this.swipeState.moved = true;
+
+          if (!this.swipeState.isHorizontal) {
+            if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+              this.resetSwipeTracking();
+              return;
+            }
+
+            if (Math.abs(dx) > 8) {
+              this.swipeState.isHorizontal = true;
+            }
+          }
+
+          if (!this.swipeState.isHorizontal) {
+            return;
+          }
+
+          let nextX = dx;
+          if (this.swipeOpenItemId === itemId) {
+            nextX = -this.swipeRevealWidth + dx;
+          }
+
+          this.swipeState.deltaX = Math.max(-this.swipeRevealWidth, Math.min(0, nextX));
+        },
+
+        handleRowPointerCancel(event, itemId) {
+          if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+          }
+
+          if (this.swipeState.activeItemId !== itemId) {
+            return;
+          }
+
+          this.resetSwipeTracking();
+        },
+
+        handleRowPointerUp(event, item) {
+          if (event.pointerType && event.pointerType !== 'touch') {
+            return;
+          }
+
+          if (this.swipeState.activeItemId !== item.id) {
+            return;
+          }
+
+          const { moved, isHorizontal, deltaX } = this.swipeState;
+          this.resetSwipeTracking();
+
+          if (isHorizontal) {
+            this.swipeOpenItemId = deltaX <= -(this.swipeRevealWidth * 0.35) ? item.id : null;
+            return;
+          }
+
+          if (!moved) {
+            if (this.swipeOpenItemId === item.id) {
+              this.closeSwipeActions();
+              return;
+            }
+
+            this.lastTouchSelectAt = Date.now();
+            this.selectItem(item, 'touch');
+          }
         },
 
         selectItem(item, source = 'click') {
@@ -2113,17 +2365,87 @@
         },
 
         async deleteItem(item) {
+          await this.queueItemDelete(item);
+        },
+
+        async queueItemDelete(item) {
+          this.closeSwipeActions();
+          if (this.pendingDelete) {
+            await this.finalizePendingDelete();
+          }
+
           this.clearPendingItemState(item.id);
           const removedItem = this.removeItemFromState(item.id);
           if (!removedItem) {
             return;
           }
 
+          const timerId = window.setTimeout(() => {
+            this.finalizePendingDelete();
+          }, this.deleteUndoDurationMs);
+
+          this.pendingDelete = {
+            itemId: item.id,
+            snapshot: removedItem,
+            timerId,
+          };
+        },
+
+        async commitPendingDelete() {
+          await this.finalizePendingDelete();
+        },
+
+        async undoPendingDelete() {
+          if (!this.pendingDelete) {
+            return;
+          }
+
+          window.clearTimeout(this.pendingDelete.timerId);
+          this.restoreRemovedItem(this.pendingDelete.snapshot);
+          this.pendingDelete = null;
+        },
+
+        async finalizePendingDelete() {
+          if (!this.pendingDelete) {
+            return;
+          }
+
+          const pendingDelete = this.pendingDelete;
+          this.pendingDelete = null;
+          window.clearTimeout(pendingDelete.timerId);
+
           try {
-            await this.requestJson(`/api/items/${item.id}`, { method: 'DELETE' }, 'Unable to delete item.');
+            await this.requestJson(`/api/items/${pendingDelete.itemId}`, { method: 'DELETE' }, 'Unable to delete item.');
           } catch (err) {
-            this.restoreRemovedItem(removedItem);
+            this.restoreRemovedItem(pendingDelete.snapshot);
             alert(err.message);
+          }
+        },
+
+        async deleteAllItems() {
+          if (!this.showDeleteAllConfirm || !this.items.length) {
+            return;
+          }
+
+          this.deleteAllSaving = true;
+          const previousItems = this.items.map(item => ({ ...item }));
+
+          try {
+            this.items = [];
+            this.selectedItem = null;
+            if (this.panelMode === 'detail') {
+              this.panelOpen = false;
+              this.panelMode = null;
+            }
+
+            await this.requestJson('/api/items/delete-all', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }, 'Unable to delete all items.');
+            this.showDeleteAllConfirm = false;
+          } catch (err) {
+            this.items = previousItems;
+            this.showDeleteAllConfirm = false;
+            alert(err.message);
+          } finally {
+            this.deleteAllSaving = false;
           }
         },
       };

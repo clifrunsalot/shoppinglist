@@ -1859,6 +1859,21 @@ def create_app(config_overrides=None):
         db.session.commit()
         return '', 204
 
+    @app.route('/api/items/delete-all', methods=['POST'])
+    @login_required
+    def api_items_delete_all():
+        household = get_or_create_household_for_user(current_user)
+        items = Item.query.filter(
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            )
+        ).all()
+        for item in items:
+            db.session.delete(item)
+        db.session.commit()
+        return jsonify({'deleted_count': len(items)}), 200
+
     @app.route('/api/stores', methods=['GET'])
     @login_required
     def api_stores_list():
