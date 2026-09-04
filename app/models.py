@@ -78,6 +78,7 @@ class Item(db.Model):
     price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
     checked = db.Column(db.Boolean, default=False)
     version = db.Column(db.Integer, nullable=False, default=1)
+    photo_url = db.Column(db.String(500), nullable=True)
     store_id = db.Column(db.Integer, db.ForeignKey('stores.id'), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     template_item_id = db.Column(db.Integer, db.ForeignKey('default_item_templates.id'), nullable=True)

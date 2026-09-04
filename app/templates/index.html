@@ -486,6 +486,22 @@
               isSwipeDragging(item.id) ? 'is-dragging' : ''
             ]"
             :style="swipeRowStyle(item.id)">
+            <div class="relative flex-shrink-0">
+              <button type="button" @click.stop="item.photo_url ? openPhotoPreview(item) : triggerItemPhotoUpload(item.id)" @pointerdown.stop
+                class="group flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50 text-gray-500 transition-colors hover:border-gray-300 hover:bg-gray-100"
+                :aria-label="item.photo_url ? 'Update item photo' : 'Add item photo'">
+                <template x-if="item.photo_url">
+                  <img :src="item.photo_url" :alt="`Photo for ${item.name}`" class="h-full w-full object-cover" />
+                </template>
+                <template x-if="!item.photo_url">
+                  <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 7.5A2.5 2.5 0 016.5 5h2.2l1.1 1.5h5.4l1.1-1.5h2.2A2.5 2.5 0 0120 7.5v9A2.5 2.5 0 0117.5 19h-11A2.5 2.5 0 014 16.5v-9z" />
+                    <circle cx="12" cy="12.5" r="3.2" />
+                  </svg>
+                </template>
+              </button>
+              <input type="file" accept="image/*" capture="environment" class="hidden" :data-item-id="item.id" @change="uploadItemPhoto($event, Number($event.target.dataset.itemId))" />
+            </div>
             <!-- Checkbox -->
             <button type="button" @click.stop="checkboxClick(item)" @pointerdown.stop
               class="press-feedback inline-flex h-10 w-10 items-center justify-center rounded-full text-2xl leading-none flex-shrink-0 transition-transform"
@@ -662,7 +678,7 @@
     </div>
   </template>
 
-  <div class="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-30 flex flex-col items-end gap-2">
+  <div x-show="!storeFilterOpen" class="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-30 flex flex-col items-end gap-2">
     <template x-if="selectedItem && !panelOpen">
       <button data-testid="open-detail-panel" @click="openDetailPanel()"
         class="theme-secondary-surface inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold shadow-[0_16px_28px_-18px_rgba(15,23,42,0.9)] backdrop-blur transition-transform hover:scale-[1.02] active:scale-[0.98]">
@@ -704,6 +720,24 @@
           </button>
           <button type="button" @click="deleteAllItems()" :disabled="deleteAllSaving" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-50"
             x-text="deleteAllSaving ? 'Deleting...' : 'Delete All'"></button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <template x-if="photoPreviewItem">
+    <div class="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" @click="closePhotoPreview()" @keydown.escape.window="closePhotoPreview()">
+      <div class="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl" @click.stop>
+        <div class="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+          <p class="min-w-0 truncate text-sm font-semibold text-gray-900" x-text="photoPreviewItem.name"></p>
+          <button type="button" data-testid="photo-preview-close" @click="closePhotoPreview()" class="ml-3 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xl leading-none text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close photo preview">&times;</button>
+        </div>
+        <div class="bg-gray-950 p-3">
+          <img :src="photoPreviewItem.photo_url" :alt="`Photo for ${photoPreviewItem.name}`" class="max-h-[60vh] w-full rounded-xl object-contain" />
+        </div>
+        <div class="flex gap-2 border-t border-gray-200 p-3">
+          <button type="button" data-testid="photo-preview-replace" @click="replaceItemPhoto()" class="theme-primary flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold">Replace</button>
+          <button type="button" data-testid="photo-preview-delete" @click="deleteItemPhoto()" class="rounded-lg border border-red-200 px-3 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50">Delete</button>
         </div>
       </div>
     </div>
@@ -948,6 +982,7 @@
         detailTab: 'detail',
         panelOpen: false,
         panelMode: null,
+        photoPreviewItem: null,
         addTab: 'new',
         newItem: { name: '', quantity: '', unit: '', category: '', store_id: null, template_item_id: null },
         defaultItems: [],
@@ -1820,6 +1855,91 @@
           return trimmedValue || null;
         },
 
+        triggerItemPhotoUpload(itemId) {
+          const input = document.querySelector(`input[data-item-id="${itemId}"][type="file"]`);
+          if (input) {
+            input.click();
+          }
+        },
+
+        openPhotoPreview(item) {
+          if (item?.photo_url) {
+            this.photoPreviewItem = item;
+          }
+        },
+
+        closePhotoPreview() {
+          this.photoPreviewItem = null;
+        },
+
+        replaceItemPhoto() {
+          const itemId = this.photoPreviewItem?.id;
+          this.closePhotoPreview();
+          if (itemId) {
+            this.triggerItemPhotoUpload(itemId);
+          }
+        },
+
+        async deleteItemPhoto() {
+          const itemId = this.photoPreviewItem?.id;
+          if (!itemId) {
+            return;
+          }
+
+          try {
+            const updated = await this.requestJson(`/api/items/${itemId}/photo`, {
+              method: 'DELETE',
+            }, 'Unable to delete item photo.');
+            this.replaceItemInState(updated);
+            this.closePhotoPreview();
+          } catch (err) {
+            alert(err.message);
+          }
+        },
+
+        async uploadItemPhoto(event, itemId) {
+          const file = event.target?.files?.[0];
+          if (!file || !itemId) {
+            return;
+          }
+
+          const maxPhotoBytes = 5 * 1024 * 1024;
+          const allowedPhotoTypes = ['image/jpeg', 'image/png', 'image/webp'];
+          if (!allowedPhotoTypes.includes(file.type)) {
+            alert('Please choose a JPG, PNG, or WebP image.');
+            event.target.value = '';
+            return;
+          }
+          if (file.size > maxPhotoBytes) {
+            alert('That image is too large. Please choose an image smaller than 5 MB.');
+            event.target.value = '';
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append('photo', file);
+
+          try {
+            const updated = await this.requestJson(`/api/items/${itemId}/photo`, {
+              method: 'POST',
+              body: formData,
+            }, 'Unable to upload item photo.');
+            this.replaceItemInState(updated);
+            if (this.selectedItem && this.selectedItem.id === itemId) {
+              this.setSelectedItemFromState(updated);
+            }
+          } catch (err) {
+            const message = err.status === 413
+              ? 'That image is too large. Please choose an image smaller than 5 MB.'
+              : err.status >= 500
+                ? 'The image could not be saved because the server encountered an error.'
+                : err.message || 'The image could not be uploaded. Please try again.';
+            alert(message);
+          } finally {
+            event.target.value = '';
+          }
+        },
+
         getCsrfToken() {
           const cookie = document.cookie
             .split('; ')
@@ -1833,6 +1953,7 @@
         async requestJson(url, options = {}, defaultMessage = 'Request failed.') {
           const method = (options.method || 'GET').toUpperCase();
           const headers = { ...(options.headers || {}) };
+          const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
           if (!['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(method)) {
             const csrfToken = this.getCsrfToken();
             if (csrfToken) {
@@ -1840,7 +1961,12 @@
             }
           }
 
-          const res = await fetch(url, { ...options, headers });
+          const finalHeaders = isFormData ? headers : { ...headers };
+          if (isFormData && finalHeaders['Content-Type']) {
+            delete finalHeaders['Content-Type'];
+          }
+
+          const res = await fetch(url, { ...options, headers: finalHeaders });
           const contentType = res.headers.get('content-type') || '';
           const payload = contentType.includes('application/json') ? await res.json() : null;
 

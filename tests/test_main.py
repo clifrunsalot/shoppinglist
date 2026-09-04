@@ -9,6 +9,7 @@ def test_print_cookies_after_login_get(client):
         print("[DEBUG] No _csrf_token cookie found")
     # This test always passes; it's for debug output only
     assert response.status_code == 200
+import io
 from decimal import Decimal
 
 import app.main as main_module
@@ -287,6 +288,7 @@ def test_items_api_creates_and_lists_items(auth_client, app):
         'checked': False,
         'version': 1,
         'template_item_id': None,
+        'photo_url': None,
         'created_at': response.get_json()['created_at'],
     }
     assert response.get_json()['created_at'] is not None
@@ -302,6 +304,58 @@ def test_items_api_rejects_missing_name(auth_client):
 
     assert response.status_code == 400
     assert response.get_json() == {'error': 'name is required'}
+
+
+def test_items_api_accepts_photo_upload_and_serializes_photo_url(auth_client, auth_user, app):
+    with app.app_context():
+        item = Item(name='Bananas', price=Decimal('1.99'), user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    response = auth_client.post(
+        f'/api/items/{item_id}/photo',
+        data={'photo': (io.BytesIO(b'not-a-real-image'), 'banana.jpg')},
+        content_type='multipart/form-data',
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['photo_url'].startswith('/static/uploads/items/')
+    assert payload['photo_url'].endswith('.jpg')
+
+    list_response = auth_client.get('/api/items')
+    assert list_response.status_code == 200
+    assert list_response.get_json()[0]['photo_url'] == payload['photo_url']
+
+    delete_response = auth_client.delete(f'/api/items/{item_id}/photo')
+    assert delete_response.status_code == 200
+    assert delete_response.get_json()['photo_url'] is None
+
+    refreshed_response = auth_client.get('/api/items')
+    assert refreshed_response.get_json()[0]['photo_url'] is None
+
+
+def test_items_api_returns_meaningful_error_for_oversized_photo(auth_client, auth_user, app):
+    with app.app_context():
+        item = Item(name='Milk', price=Decimal('2.49'), user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+
+    original_limit = app.config['MAX_CONTENT_LENGTH']
+    app.config['MAX_CONTENT_LENGTH'] = 64
+    try:
+        response = auth_client.post(
+            f'/api/items/{item_id}/photo',
+            data={'photo': (io.BytesIO(b'x' * 128), 'milk.jpg')},
+            content_type='multipart/form-data',
+        )
+    finally:
+        app.config['MAX_CONTENT_LENGTH'] = original_limit
+
+    assert response.status_code == 413
+    assert response.get_json() == {'error': 'photo is too large; maximum size is 5 MB'}
 
 
 def test_items_api_rejects_duplicate_name_on_create(auth_client, auth_user, app):
@@ -787,6 +841,7 @@ def test_security_headers_are_set_on_html_responses(auth_client):
     assert response.headers['X-Content-Type-Options'] == 'nosniff'
     assert response.headers['X-Frame-Options'] == 'DENY'
     assert response.headers['Referrer-Policy'] == 'same-origin'
+    assert response.headers['Permissions-Policy'] == 'camera=(self), microphone=(), geolocation=(), payment=()'
 
     csp = response.headers.get('Content-Security-Policy', '')
     assert "default-src 'none'" in csp

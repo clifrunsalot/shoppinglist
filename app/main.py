@@ -4,6 +4,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from math import isfinite
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import click
@@ -13,12 +14,13 @@ from flask_limiter.util import get_remote_address
 from flask_seasurf import SeaSurf
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from app.db import db, migrate
 from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Household, HouseholdInvite, HouseholdMember, Item, SignupToken, Store, User
 
 
-MAX_REQUEST_BYTES = 16 * 1024
+MAX_REQUEST_BYTES = 5 * 1024 * 1024
 MAX_ITEM_NAME_LENGTH = 255
 THEME_OPTIONS = ('meadow', 'ocean', 'sunset', 'berry')
 UNKNOWN_STORE_NAME = 'unknown'
@@ -308,18 +310,21 @@ _INSECURE_DEFAULT_KEY = 'dev-secret-key-change-me'
 
 def create_app(config_overrides=None):
     app = Flask(__name__, template_folder='templates')
+    upload_dir = Path(__file__).resolve().parent / 'static' / 'uploads' / 'items'
+    upload_dir.mkdir(parents=True, exist_ok=True)
     # Allow forcing CSRF in tests by passing SEASURF_FORCE in config_overrides
     csrf = SeaSurf()
     secret_key = os.environ.get('SECRET_KEY', _INSECURE_DEFAULT_KEY)
     app.config.update(
         SECRET_KEY=secret_key,
+        UPLOAD_FOLDER=str(upload_dir),
+        MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
         SQLALCHEMY_DATABASE_URI=build_database_uri(),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SQLALCHEMY_ENGINE_OPTIONS={
             'pool_pre_ping': True,
             'pool_recycle': 1800,
         },
-        MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
         SESSION_COOKIE_SECURE=env_flag('SESSION_COOKIE_SECURE', False),
@@ -330,6 +335,12 @@ def create_app(config_overrides=None):
     )
     if config_overrides:
         app.config.update(config_overrides)
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def handle_request_entity_too_large(error):
+        if request.path.startswith('/api/'):
+            return error_response('photo is too large; maximum size is 5 MB', 413)
+        return error
 
     # Rate limiting: disabled during automated tests to keep the suite fast
     # and to avoid cross-test interference.  Enable explicitly when needed.
@@ -795,6 +806,7 @@ def create_app(config_overrides=None):
             'checked': item.checked,
             'version': item.version if item.version is not None else 1,
             'template_item_id': item.template_item_id,
+            'photo_url': item.photo_url,
             'created_at': item.created_at.isoformat() if item.created_at else None,
         }
 
@@ -1705,7 +1717,7 @@ def create_app(config_overrides=None):
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'DENY'
         response.headers['Referrer-Policy'] = 'same-origin'
-        response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=(), payment=()'
+        response.headers['Permissions-Policy'] = 'camera=(self), microphone=(), geolocation=(), payment=()'
         return response
 
     @app.route('/api/items', methods=['GET'])
@@ -1778,6 +1790,63 @@ def create_app(config_overrides=None):
         db.session.commit()
         return jsonify(serialize(item)), 201
 
+    @app.route('/api/items/<int:item_id>/photo', methods=['POST'])
+    @login_required
+    def api_item_photo_upload(item_id):
+        household = get_or_create_household_for_user(current_user)
+        item = Item.query.filter(
+            Item.id == item_id,
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            ),
+        ).first_or_404()
+
+        uploaded_file = request.files.get('photo')
+        if uploaded_file is None or uploaded_file.filename == '':
+            return error_response('photo is required', 400)
+
+        filename = uploaded_file.filename or ''
+        extension = os.path.splitext(filename)[1].lower()
+        if extension not in {'.jpg', '.jpeg', '.png', '.webp'}:
+            return error_response('photo must be a jpg, png, or webp image', 400)
+
+        if uploaded_file.content_length and uploaded_file.content_length > 5 * 1024 * 1024:
+            return error_response('photo must be smaller than 5 MB', 400)
+
+        target_dir = Path(app.config['UPLOAD_FOLDER'])
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = f'item-{item.id}-{secrets.token_hex(8)}{extension}'
+        target_path = target_dir / safe_name
+        uploaded_file.save(target_path)
+
+        item.photo_url = f'/static/uploads/items/{safe_name}'
+        item.version = (item.version if item.version is not None else 1) + 1
+        db.session.commit()
+        return jsonify(serialize(item))
+
+    @app.route('/api/items/<int:item_id>/photo', methods=['DELETE'])
+    @login_required
+    def api_item_photo_delete(item_id):
+        household = get_or_create_household_for_user(current_user)
+        item = Item.query.filter(
+            Item.id == item_id,
+            db.or_(
+                Item.household_id == household.id,
+                db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+            ),
+        ).first_or_404()
+
+        if item.photo_url and item.photo_url.startswith('/static/uploads/items/'):
+            stored_path = Path(app.static_folder) / item.photo_url.removeprefix('/static/')
+            if stored_path.is_file():
+                stored_path.unlink()
+
+        item.photo_url = None
+        item.version = (item.version if item.version is not None else 1) + 1
+        db.session.commit()
+        return jsonify(serialize(item))
+
     @app.route('/api/items/<int:item_id>', methods=['PATCH'])
     @login_required
     def api_items_update(item_id):
@@ -1837,6 +1906,15 @@ def create_app(config_overrides=None):
             item.store_id, error = parse_store_id(data.get('store_id'))
             if error:
                 return error
+        if 'photo_url' in data:
+            photo_url = data.get('photo_url')
+            if photo_url in (None, ''):
+                item.photo_url = None
+            else:
+                photo_url = str(photo_url).strip()
+                if not photo_url.startswith('/') and not photo_url.startswith('http://') and not photo_url.startswith('https://'):
+                    return error_response('photo_url must be a valid relative or absolute URL', 400)
+                item.photo_url = photo_url
         if 'price' in data:
             item.price = parse_price(data['price'])
 
