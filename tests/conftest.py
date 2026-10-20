@@ -5,7 +5,14 @@ import pytest
 from werkzeug.serving import make_server
 
 from app.db import db
-from app.main import create_app
+
+# Importing main also creates the WSGI app; isolate it from local deployment settings.
+with pytest.MonkeyPatch.context() as bootstrap_env:
+    bootstrap_env.setenv('DATABASE_URL', 'sqlite:///:memory:')
+    bootstrap_env.setenv('SECRET_KEY', 'test-bootstrap-secret-key')
+    bootstrap_env.setenv('SESSION_COOKIE_SECURE', 'true')
+    from app.main import create_app
+
 from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Household, HouseholdInvite, HouseholdMember, Item, Store, User
 
 
@@ -15,6 +22,8 @@ def app():
         {
             'TESTING': True,
             'SECRET_KEY': 'test-secret-key',
+            'SESSION_COOKIE_SECURE': False,
+            'REMEMBER_COOKIE_SECURE': False,
             'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:',
             # Disable pool-level reset_on_return.  After a session commits and is then
             # closed, SQLAlchemy's default 'rollback' reset would issue ROLLBACK to

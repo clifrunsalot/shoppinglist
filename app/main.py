@@ -517,11 +517,15 @@ def create_app(config_overrides=None):
         return unknown_store
 
     def create_missing_default_item_for_user(user, template):
-        existing_item = Item.query.filter_by(user_id=user.id, template_item_id=template.id).first()
+        household = get_or_create_household_for_user(user)
+        items = household_items_for_defaults(user, household)
+        existing_item = items.filter(Item.template_item_id == template.id).first()
         if existing_item is not None:
             return None, False
 
-        matching_item = find_user_item_by_name(user.id, template.name)
+        matching_item = items.filter(
+            db.func.lower(db.func.trim(Item.name)) == template.name.strip().lower(),
+        ).first()
         if matching_item is not None:
             if matching_item.template_item_id is None:
                 matching_item.template_item_id = template.id
@@ -535,7 +539,6 @@ def create_app(config_overrides=None):
             if store is not None:
                 store_id = store.id
 
-        household = get_or_create_household_for_user(user)
         item = Item(
             name=template.name,
             photo_url=template.photo_url,
@@ -744,8 +747,9 @@ def create_app(config_overrides=None):
 
     def import_default_items_for_user(user):
         created_stores = ensure_user_has_default_stores(user)
-        changed = deduplicate_user_items_for_user(user.id)
         household = get_or_create_household_for_user(user)
+        household_items = household_items_for_defaults(user, household)
+        changed = deduplicate_user_items_for_user(user.id)
         templates = DefaultItemTemplate.query.order_by(
             db.func.lower(DefaultItemTemplate.name).asc(),
             DefaultItemTemplate.id.asc(),
@@ -763,11 +767,10 @@ def create_app(config_overrides=None):
                 if store is not None:
                     store_id = store.id
 
-            item = Item.query.filter_by(user_id=user.id, template_item_id=template.id).first()
+            item = household_items.filter(Item.template_item_id == template.id).first()
             name_matched_unlinked = False
             if item is None:
-                item = Item.query.filter(
-                    Item.user_id == user.id,
+                item = household_items.filter(
                     Item.template_item_id == None,
                     db.func.lower(db.func.trim(Item.name)) == normalized_template_name,
                 ).first()
@@ -935,6 +938,14 @@ def create_app(config_overrides=None):
         db.session.add(membership)
         db.session.flush()
         return household
+
+    def household_items_for_defaults(user, household):
+        # Lock the household so simultaneous imports cannot both insert a missing item.
+        Household.query.filter_by(id=household.id).with_for_update().one()
+        return Item.query.filter(db.or_(
+            Item.household_id == household.id,
+            db.and_(Item.household_id.is_(None), Item.user_id == user.id),
+        )).order_by(Item.id.asc())
 
     def find_household_item_by_name(household_id, name, *, user_id=None, exclude_item_id=None):
         """Find an item by name within a household.

@@ -107,6 +107,10 @@ Administration and defaults
 - New contributions copy the saved name, quantity, unit, category, and associated default store
   (when available), including the item's photo, but not price or checked state. As with admin-created defaults,
   they are distributed to active, approved accounts and recorded in the audit log.
+- Default distribution and imports reuse items across the current household, so multiple
+  members do not receive separate copies of the same default. Linking an existing,
+  unlinked item preserves its details. Previously created duplicates are not automatically
+  deleted; use the existing-default confirmation flow to resolve them deliberately.
 - Default photos appear in the default catalog and are inherited when creating or importing
   items from defaults. Existing personal photos are not overwritten on import. Removing or
   replacing the original item's photo does not remove the saved default photo.

@@ -46,10 +46,10 @@ class TestHouseholdMemberModel:
         user = create_user('notif-off@example.com')
         result = create_household(user['id'])
         with app.app_context():
-            member = HouseholdMember.query.get(result['member_id'])
+            member = db.session.get(HouseholdMember, result['member_id'])
             member.notifications_enabled = False
             db.session.commit()
-            refreshed = HouseholdMember.query.get(result['member_id'])
+            refreshed = db.session.get(HouseholdMember, result['member_id'])
             assert refreshed.notifications_enabled is False
 
     def test_duplicate_member_rejected(self, app, create_user, create_household):
@@ -189,7 +189,7 @@ class TestHouseholdIdColumns:
             )
             db.session.add(item)
             db.session.commit()
-            refreshed = Item.query.get(item.id)
+            refreshed = db.session.get(Item, item.id)
             assert refreshed.household_id == result['household_id']
 
     def test_item_household_id_is_nullable(self, app, create_user):
@@ -217,7 +217,7 @@ class TestHouseholdIdColumns:
             )
             db.session.add(store)
             db.session.commit()
-            refreshed = Store.query.get(store.id)
+            refreshed = db.session.get(Store, store.id)
             assert refreshed.household_id == result['household_id']
 
 

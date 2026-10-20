@@ -199,9 +199,11 @@ def test_default_photo_survives_source_removal_and_is_inherited(
     )
     assert replaced.status_code == 200
     assert replaced.get_json()['photo_url'] != photo_url
-    assert auth_client.get(photo_url).data == b'photo-content'
+    with auth_client.get(photo_url) as response:
+        assert response.data == b'photo-content'
     assert auth_client.delete(f'/api/items/{item_id}/photo').status_code == 200
-    assert auth_client.get(photo_url).data == b'photo-content'
+    with auth_client.get(photo_url) as response:
+        assert response.data == b'photo-content'
     assert auth_client.delete(f'/api/items/{item_id}').status_code == 204
     created = auth_client.post('/api/items', json={
         'name': 'Photo Default', 'template_item_id': template_id,
@@ -210,7 +212,8 @@ def test_default_photo_survives_source_removal_and_is_inherited(
     assert created.get_json()['photo_url'] == photo_url
     new_id = created.get_json()['id']
     assert auth_client.delete(f'/api/items/{new_id}/photo').status_code == 200
-    assert auth_client.get(photo_url).data == b'photo-content'
+    with auth_client.get(photo_url) as response:
+        assert response.data == b'photo-content'
     assert auth_client.delete(f'/api/items/{new_id}').status_code == 204
     assert auth_client.post('/api/account/import-default-items').status_code == 200
     with app.app_context():
@@ -313,6 +316,80 @@ def test_item_contribution_accessible_to_household_member(auth_client, auth_user
         item_id = item.id
     response = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1})
     assert response.status_code == 201
+    with app.app_context():
+        shared_items = Item.query.filter_by(household_id=household['household_id']).all()
+        assert len(shared_items) == 1
+        assert shared_items[0].id == item_id
+        assert shared_items[0].template_item_id == response.get_json()['default']['id']
+
+
+@pytest.mark.parametrize('source_owner', ['owner', 'member', 'none'])
+def test_default_distribution_creates_one_item_per_household(
+    admin_client, create_user, create_household, app, source_owner,
+):
+    owner = create_user('distribution-owner@example.com')
+    member = create_user('distribution-member@example.com')
+    outsider = create_user('distribution-outsider@example.com')
+    household = create_household(owner['id'])
+    with app.app_context():
+        db.session.add(HouseholdMember(
+            household_id=household['household_id'], user_id=member['id'],
+        ))
+        source_id = None
+        if source_owner != 'none':
+            source = Item(
+                name='Shared Default', quantity=7, unit='bag', checked=True,
+                user_id=owner['id'] if source_owner == 'owner' else member['id'],
+                household_id=household['household_id'],
+            )
+            db.session.add(source)
+            db.session.flush()
+            source_id = source.id
+        db.session.commit()
+    response = admin_client.post('/admin/default-items', data={'name': 'Shared Default', 'quantity': 2})
+    assert response.status_code == 302
+    with app.app_context():
+        template = DefaultItemTemplate.query.filter_by(name='Shared Default').one()
+        shared = Item.query.filter_by(household_id=household['household_id']).all()
+        assert len(shared) == 1
+        assert shared[0].template_item_id == template.id
+        if source_id is not None:
+            assert shared[0].id == source_id
+            assert (shared[0].quantity, shared[0].unit, shared[0].checked) == (7, 'bag', True)
+        assert Item.query.filter_by(user_id=outsider['id'], template_item_id=template.id).count() == 1
+
+
+@pytest.mark.parametrize('linked', [False, True])
+def test_default_import_reuses_other_household_members_item(
+    auth_client, auth_user, create_user, create_household, app, linked,
+):
+    owner = create_user('import-owner@example.com')
+    household = create_household(owner['id'])
+    with app.app_context():
+        db.session.add(HouseholdMember(
+            household_id=household['household_id'], user_id=auth_user['id'],
+        ))
+        template = DefaultItemTemplate(name='Household Import', quantity=2)
+        db.session.add(template)
+        db.session.flush()
+        source = Item(
+            name='Household Import', quantity=7, unit='bag', checked=True,
+            user_id=owner['id'], household_id=household['household_id'],
+            template_item_id=template.id if linked else None,
+        )
+        db.session.add(source)
+        db.session.commit()
+        source_id, template_id = source.id, template.id
+    response = auth_client.post('/api/account/import-default-items')
+    assert response.status_code == 200
+    assert response.get_json()['created_count'] == 0
+    with app.app_context():
+        shared = Item.query.filter_by(household_id=household['household_id']).all()
+        assert len(shared) == 1
+        assert shared[0].id == source_id
+        assert shared[0].template_item_id == template_id
+        assert shared[0].quantity == (2 if linked else 7)
+    assert auth_client.post('/api/account/import-default-items').get_json()['created_count'] == 0
 
 
 @pytest.mark.parametrize(
@@ -2361,6 +2438,8 @@ def test_login_rate_limit_blocks_after_threshold():
         'RATELIMIT_ENABLED': True,
         'RATELIMIT_STORAGE_URI': 'memory://',
         'SECRET_KEY': 'rate-limit-test-secret-key-x1y2z3',
+        'SESSION_COOKIE_SECURE': True,
+        'REMEMBER_COOKIE_SECURE': True,
     })
     with rate_app.app_context():
         _db.create_all()
@@ -2372,6 +2451,7 @@ def test_login_rate_limit_blocks_after_threshold():
             '/login',
             data={'email': 'nobody@example.com', 'password': 'wrongpassword'},
             content_type='application/x-www-form-urlencoded',
+            base_url='https://localhost',
         )
         assert rv.status_code == 200, f'attempt {i + 1} should return login page (200), got {rv.status_code}'
 
@@ -2379,6 +2459,7 @@ def test_login_rate_limit_blocks_after_threshold():
         '/login',
         data={'email': 'nobody@example.com', 'password': 'wrongpassword'},
         content_type='application/x-www-form-urlencoded',
+        base_url='https://localhost',
     )
     assert rv.status_code == 429, f'11th attempt should be rate limited (429), got {rv.status_code}'
 
