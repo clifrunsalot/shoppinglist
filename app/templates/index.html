@@ -500,7 +500,7 @@
                   </svg>
                 </template>
               </button>
-              <input type="file" accept="image/*" capture="environment" class="hidden" :data-item-id="item.id" @change="uploadItemPhoto($event, Number($event.target.dataset.itemId))" />
+              <input type="file" accept="image/jpeg,image/png,image/webp" class="hidden" :data-item-id="item.id" @change="uploadItemPhoto($event, Number($event.target.dataset.itemId))" />
             </div>
             <!-- Checkbox -->
             <button type="button" @click.stop="checkboxClick(item)" @pointerdown.stop
@@ -566,6 +566,10 @@
               <p class="mt-1 text-xs leading-5 text-gray-500">Import the current default grocery list into your account. If an item already exists with the same name, the default values overwrite it.</p>
             </div>
             <div class="space-y-3">
+              <button data-testid="settings-view-default-items" @click="await openAddPanel(); addTab = 'defaults'; await loadDefaultItems()"
+                class="theme-outline w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors">
+                View Default Items
+              </button>
               <template x-if="importDefaultsMessage.text">
                 <div data-testid="settings-import-default-items-message" class="rounded-2xl border px-3 py-2 text-sm"
                   :class="importDefaultsMessage.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'"
@@ -785,6 +789,31 @@
               </div>
 
               <div class="flex-1 overflow-y-auto px-4 py-4">
+                <div class="mb-4 space-y-2">
+                  <button data-testid="add-to-defaults" @click="addSelectedItemToDefaults()"
+                    :disabled="defaultContributionSaving"
+                    class="theme-outline w-full rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-40"
+                    x-text="defaultContributionSaving ? 'Checking defaults...' : 'Add to default list'"></button>
+                  <p class="text-xs text-gray-500">Adds to the shared catalog and distributes to active accounts.</p>
+                  <p data-testid="default-contribution-message" role="status" aria-live="polite"
+                    :class="defaultContributionMessage.type === 'error' ? 'text-red-700' : 'text-gray-700'"
+                    class="text-sm" x-text="defaultContributionMessage.text"></p>
+                  <template x-if="defaultContributionMatches.length">
+                    <div data-testid="default-contribution-matches" class="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+                      <p>Similar default items exist. Choose an existing name or add this as a distinct item.</p>
+                      <template x-for="match in defaultContributionMatches" :key="match.id">
+                        <button @click="useExistingDefault(match)" :disabled="defaultContributionSaving"
+                          class="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left"
+                          x-text="`Use existing default: ${match.name}`"></button>
+                      </template>
+                      <button data-testid="default-contribution-add-anyway" @click="addSelectedItemToDefaults(true)"
+                        :disabled="defaultContributionSaving" class="theme-primary rounded-lg px-3 py-2"
+                        x-text="`Add '${defaultContributionName}' anyway`"></button>
+                      <button @click="defaultContributionMatches = []; defaultContributionMessage = { type: '', text: '' }"
+                        :disabled="defaultContributionSaving" class="rounded-lg border border-gray-300 px-3 py-2">Cancel</button>
+                    </div>
+                  </template>
+                </div>
                 <template x-if="detailTab === 'detail'">
                   <div class="space-y-4 text-sm">
                     <div>
@@ -926,6 +955,10 @@
                             :class="dt.alreadyAdded ? 'opacity-60' : ''"
                             class="w-full rounded-xl px-3 py-3 text-left transition hover:bg-gray-50 active:bg-gray-100">
                             <div class="flex items-center justify-between gap-2">
+                              <template x-if="dt.photo_url">
+                                <img data-testid="default-item-photo" :src="dt.photo_url" :alt="dt.name"
+                                  class="h-12 w-12 shrink-0 rounded-lg object-cover" loading="lazy" />
+                              </template>
                               <p class="text-sm font-medium text-gray-900" x-text="dt.name"></p>
                               <template x-if="dt.alreadyAdded">
                                 <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">In list</span>
@@ -1016,6 +1049,11 @@
         itemSelectionPromise: Promise.resolve(),
         selectedItemOutdated: false,
         itemConflictMessage: '',
+        defaultContributionSaving: false,
+        defaultContributionMessage: { type: '', text: '' },
+        defaultContributionMatches: [],
+        defaultContributionName: '',
+        defaultContributionVersion: null,
         pendingDelete: null,
         deleteUndoDurationMs: 5000,
         showDeleteAllConfirm: false,
@@ -1267,6 +1305,10 @@
         },
 
         setSelectedItemFromState(item) {
+          if (item?.id !== this.selectedItem?.id) {
+            this.defaultContributionMessage = { type: '', text: '' };
+            this.defaultContributionMatches = [];
+          }
           this.selectedItem = item
             ? {
                 ...item,
@@ -2000,6 +2042,112 @@
           }
         },
 
+        async useExistingDefault(match) {
+          if (this.defaultContributionSaving) return;
+          if (this.selectedItem?.name.trim() !== this.defaultContributionName) {
+            this.defaultContributionMatches = [];
+            this.defaultContributionMessage = { type: 'error', text: 'Item changed. Check defaults again.' };
+            return;
+          }
+          const itemId = this.selectedItem.id;
+          this.defaultContributionSaving = true;
+          try {
+            await this.flushSelectedItemChanges();
+            if (this.selectedItem?.id !== itemId) return;
+            const saved = this.getItemStateSnapshot(itemId);
+            if (saved?.version !== this.defaultContributionVersion || this.itemConflictMessage) {
+              throw new Error('Item changed. Check defaults again.');
+            }
+            const body = { default_id: match.id, version: saved.version };
+            const send = () => this.requestJson(`/api/items/${itemId}/use-default`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+            }, 'Unable to use existing default.');
+            let payload = await send();
+            if (this.selectedItem?.id !== itemId) return;
+            if (payload.status === 'confirmation_required') {
+              if (!confirm(`"${payload.item.name}" is already in your list. Keep all its details and remove "${saved.name}"? The selected item's details will be discarded.`)) return;
+              body.keep_item_id = payload.item.id;
+              body.keep_version = payload.item.version;
+              payload = await send();
+            }
+            if (payload.removed_item_id) {
+              this.items = this.items.filter(item => item.id !== payload.removed_item_id);
+            }
+            this.replaceItemInState(payload.item);
+            if (this.selectedItem?.id === itemId) {
+              this.setSelectedItemFromState(payload.item);
+              this.defaultContributionMatches = [];
+              this.defaultContributionMessage = {
+                type: 'success', text: payload.status === 'combined'
+                  ? `Kept "${payload.item.name}" and removed the duplicate. Existing details were preserved.`
+                  : `Now using the default name "${payload.default.name}". Your other item details were preserved.`,
+              };
+            }
+          } catch (err) {
+            if (this.selectedItem?.id === itemId) {
+              this.defaultContributionMessage = { type: 'error', text: err.message };
+            }
+          } finally {
+            this.defaultContributionSaving = false;
+          }
+        },
+
+        async addSelectedItemToDefaults(addAnyway = false) {
+          if (!this.selectedItem || this.defaultContributionSaving) return;
+          const itemId = this.selectedItem.id;
+          const draft = {
+            name: this.selectedItem.name.trim(),
+            quantity: Number(this.selectedItem.quantity),
+            unit: this.selectedItem.unit?.trim() || null,
+            price: this.formatPrice(this.selectedItem.price),
+            category: this.selectedItem.category_value || null,
+            store_id: this.selectedItem.store_value === '' ? null : Number(this.selectedItem.store_value),
+          };
+          this.defaultContributionSaving = true;
+          this.defaultContributionMessage = { type: '', text: '' };
+          try {
+            await this.flushSelectedItemChanges();
+            if (this.selectedItem?.id !== itemId) return;
+            const saved = this.getItemStateSnapshot(itemId);
+            if (!saved || this.itemConflictMessage || this.selectedItemOutdated ||
+                Object.entries(draft).some(([key, value]) =>
+                  (key === 'price' ? this.formatPrice(saved[key]) : saved[key] ?? null) !== value)) {
+              throw new Error('Save or reload your item changes before adding to defaults.');
+            }
+            if (addAnyway && (saved.name !== this.defaultContributionName ||
+                saved.version !== this.defaultContributionVersion)) {
+              this.defaultContributionMatches = [];
+              throw new Error('Item changed. Check defaults again before adding anyway.');
+            }
+            const payload = await this.requestJson(`/api/items/${itemId}/add-to-defaults`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ version: saved.version, add_anyway: addAnyway }),
+            }, 'Unable to add item to defaults.');
+            if (this.selectedItem?.id !== itemId) return;
+            this.defaultContributionMatches = [];
+            if (payload.status === 'possible_matches') {
+              this.defaultContributionMatches = payload.matches;
+              this.defaultContributionName = saved.name;
+              this.defaultContributionVersion = saved.version;
+            } else {
+              this.defaultContributionMessage = {
+                type: 'success',
+                text: payload.status === 'created'
+                  ? `"${payload.default.name}" was added to the default list.`
+                  : `Already in the default list as "${payload.default.name}".`,
+              };
+            }
+          } catch (err) {
+            if (this.selectedItem?.id === itemId) {
+              this.defaultContributionMessage = { type: 'error', text: err.message };
+            }
+          } finally {
+            this.defaultContributionSaving = false;
+          }
+        },
+
         async sendInvite() {
           this.inviteSaving = true;
           this.inviteMessage = { type: '', text: '' };
@@ -2444,8 +2592,8 @@
         },
 
         async loadDefaultItems() {
-          if (this.defaultItems.length > 0) return;
           this.defaultItemsLoading = true;
+          this.defaultItems = [];
           try {
             this.defaultItems = await this.requestJson('/api/default-items', {}, 'Unable to load default items.');
           } catch (err) {

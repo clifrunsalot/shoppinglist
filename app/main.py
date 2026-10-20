@@ -1,7 +1,10 @@
 import json
 import os
+import re
 import secrets
+import unicodedata
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from math import isfinite
 from pathlib import Path
@@ -15,6 +18,7 @@ from flask_seasurf import SeaSurf
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.exceptions import RequestEntityTooLarge
+from sqlalchemy import text
 
 from app.db import db, migrate
 from app.models import AppSetting, AuditLog, DefaultCategoryTemplate, DefaultItemTemplate, DefaultStoreTemplate, Household, HouseholdInvite, HouseholdMember, Item, SignupToken, Store, User
@@ -24,6 +28,31 @@ MAX_REQUEST_BYTES = 5 * 1024 * 1024
 MAX_ITEM_NAME_LENGTH = 255
 THEME_OPTIONS = ('meadow', 'ocean', 'sunset', 'berry')
 UNKNOWN_STORE_NAME = 'unknown'
+
+
+def default_name_tokens(name):
+    normalized = unicodedata.normalize('NFKC', name).casefold()
+    return tuple(sorted(re.findall(r'\d+(?:[.,]\d+)?%?|[^\W\d_]+', normalized)))
+
+
+def default_name_similarity(left, right):
+    left_tokens = default_name_tokens(left)
+    right_tokens = list(default_name_tokens(right))
+    if not left_tokens or len(left_tokens) != len(right_tokens):
+        return 0
+    shared_tokens = set(left_tokens) & set(right_tokens)
+    # Shared words provide context for broader suggestions, never automatic matches.
+    minimum_word_score = 0.6 if shared_tokens else 0.8
+    scores = []
+    for token in sorted(left_tokens, key=len):
+        best = max(right_tokens, key=lambda other: SequenceMatcher(None, token, other).ratio())
+        score = SequenceMatcher(None, token, best).ratio()
+        if token != best and (min(len(token), len(best)) < 4 or
+                              any(char.isdigit() for char in token + best) or score < minimum_word_score):
+            return 0
+        scores.append(score)
+        right_tokens.remove(best)
+    return sum(scores) / len(scores)
 
 
 def env_flag(name, default=False):
@@ -36,10 +65,13 @@ def env_flag(name, default=False):
 def build_database_uri():
     database_url = os.environ.get('DATABASE_URL', '').strip()
     if database_url:
-        return database_url.replace('postgres://', 'postgresql://', 1)
+        scheme, separator, remainder = database_url.partition('://')
+        if separator and scheme in {'postgres', 'postgresql', 'postgresql+psycopg'}:
+            return f'postgresql+psycopg2://{remainder}'
+        return database_url
 
     return (
-        f"postgresql://{os.environ.get('DB_USER', 'devuser')}:{os.environ.get('DB_PASSWORD', 'devpass')}@"
+        f"postgresql+psycopg2://{os.environ.get('DB_USER', 'devuser')}:{os.environ.get('DB_PASSWORD', 'devpass')}@"
         f"{os.environ.get('DB_HOST', 'db')}:{os.environ.get('DB_PORT', '5432')}/"
         f"{os.environ.get('DB_NAME', 'appdb')}"
     )
@@ -506,6 +538,7 @@ def create_app(config_overrides=None):
         household = get_or_create_household_for_user(user)
         item = Item(
             name=template.name,
+            photo_url=template.photo_url,
             quantity=template.quantity,
             unit=template.unit,
             category=template.category,
@@ -743,6 +776,7 @@ def create_app(config_overrides=None):
             if item is None:
                 item = Item(
                     name=template.name,
+                    photo_url=template.photo_url,
                     quantity=template.quantity,
                     unit=template.unit,
                     category=template.category,
@@ -777,6 +811,8 @@ def create_app(config_overrides=None):
                 item.store_id = store_id
                 item.template_item_id = template.id
             overwritten_items.append(item)
+            if not item.photo_url:
+                item.photo_url = template.photo_url
 
         if created_items or overwritten_items or changed:
             db.session.commit()
@@ -845,6 +881,28 @@ def create_app(config_overrides=None):
         if exclude_item_id is not None:
             query = query.filter(DefaultItemTemplate.id != exclude_item_id)
         return query.first()
+
+    def lock_default_items():
+        # Serialize catalog writes across workers, including the check before insert.
+        if db.engine.dialect.name == 'postgresql':
+            db.session.execute(text('LOCK TABLE default_item_templates IN SHARE ROW EXCLUSIVE MODE'))
+
+    def create_and_distribute_default_item(**fields):
+        template = DefaultItemTemplate(**fields)
+        db.session.add(template)
+        db.session.flush()
+        copied_user_ids = []
+        for user in User.query.filter_by(is_approved=True, _is_active=True).all():
+            created_item, linked_existing = create_missing_default_item_for_user(user, template)
+            if created_item is not None and not linked_existing:
+                copied_user_ids.append(user.id)
+        record_audit(
+            'default_item.created', 'default_item', f'Created default item {template.name}.',
+            actor=current_user, target_id=template.id,
+            details={'sort_order': template.sort_order, 'store_template_id': template.store_template_id,
+                     'copied_user_ids': copied_user_ids},
+        )
+        return template
 
     def find_default_category_template_by_name(name, *, exclude_category_id=None):
         normalized_name = (name or '').strip()
@@ -1367,6 +1425,7 @@ def create_app(config_overrides=None):
     @login_required
     @admin_required
     def admin_create_default_item():
+        lock_default_items()
         name, error = normalize_text_field(request.form.get('name'), 'name', MAX_ITEM_NAME_LENGTH, required=True)
         if error:
             flash('An item name is required.', 'error')
@@ -1407,16 +1466,10 @@ def create_app(config_overrides=None):
                 flash('Choose a valid default store.', 'error')
                 return redirect(admin_default_items_anchor())
 
-        item = DefaultItemTemplate(name=name, quantity=quantity, unit=unit, category=category, sort_order=sort_order, store_template_id=store_template_id)
-        db.session.add(item)
-        db.session.flush()
-        copied_user_ids = []
-        existing_users = User.query.filter_by(is_approved=True, _is_active=True).all()
-        for user in existing_users:
-            created_item, linked_existing = create_missing_default_item_for_user(user, item)
-            if created_item is not None and not linked_existing:
-                copied_user_ids.append(user.id)
-        record_audit('default_item.created', 'default_item', f'Created default item {name}.', actor=current_user, target_id=item.id, details={'sort_order': sort_order, 'store_template_id': store_template_id, 'copied_user_ids': copied_user_ids})
+        create_and_distribute_default_item(
+            name=name, quantity=quantity, unit=unit, category=category,
+            sort_order=sort_order, store_template_id=store_template_id,
+        )
         db.session.commit()
         flash('Default item added.', 'success')
         return redirect(admin_default_items_anchor())
@@ -1763,13 +1816,15 @@ def create_app(config_overrides=None):
         if error:
             return error
 
+        template = None
         template_item_id = data.get('template_item_id')
         if template_item_id is not None:
             try:
                 template_item_id = int(template_item_id)
             except (TypeError, ValueError):
                 return error_response('template_item_id must be an integer', 400)
-            if db.session.get(DefaultItemTemplate, template_item_id) is None:
+            template = db.session.get(DefaultItemTemplate, template_item_id)
+            if template is None:
                 return error_response('template_item_id does not reference a known template', 404)
             _create_scope = db.or_(
                 Item.household_id == household.id,
@@ -1786,6 +1841,8 @@ def create_app(config_overrides=None):
         ).scalar() or 0) + 10
         price = parse_price(data.get('price')) if data else None
         item = Item(name=name, quantity=quantity, unit=unit, category=category, sort_order=next_sort_order, store_id=store_id, price=price, user_id=current_user.id, household_id=household.id, template_item_id=template_item_id)
+        if template is not None:
+            item.photo_url = template.photo_url
         db.session.add(item)
         db.session.commit()
         return jsonify(serialize(item)), 201
@@ -1837,7 +1894,11 @@ def create_app(config_overrides=None):
             ),
         ).first_or_404()
 
-        if item.photo_url and item.photo_url.startswith('/static/uploads/items/'):
+        shared_photo = item.photo_url and (
+            DefaultItemTemplate.query.filter_by(photo_url=item.photo_url).first() is not None or
+            Item.query.filter(Item.id != item.id, Item.photo_url == item.photo_url).first() is not None
+        )
+        if item.photo_url and not shared_photo and item.photo_url.startswith('/static/uploads/items/'):
             stored_path = Path(app.static_folder) / item.photo_url.removeprefix('/static/')
             if stored_path.is_file():
                 stored_path.unlink()
@@ -2016,9 +2077,121 @@ def create_app(config_overrides=None):
                 'unit': t.unit,
                 'category': t.category,
                 'store_template_id': t.store_template_id,
+                'photo_url': t.photo_url,
             }
             for t in templates
         ])
+
+    @app.route('/api/items/<int:item_id>/add-to-defaults', methods=['POST'])
+    @login_required
+    def api_item_add_to_defaults(item_id):
+        data, error = get_json_body()
+        if error:
+            return error
+        if type(data.get('version')) is not int:
+            return error_response('version must be an integer', 400)
+        if type(data.get('add_anyway', False)) is not bool:
+            return error_response('add_anyway must be a boolean', 400)
+        lock_default_items()
+        household = get_or_create_household_for_user(current_user)
+        item = Item.query.filter(
+            Item.id == item_id,
+            db.or_(Item.household_id == household.id,
+                   db.and_(Item.household_id.is_(None), Item.user_id == current_user.id)),
+        ).first_or_404()
+        if item.version != data['version']:
+            return error_response('Item changed. Reload it before adding to defaults.', 409)
+        name, error = normalize_text_field(item.name, 'name', MAX_ITEM_NAME_LENGTH, required=True)
+        if error:
+            return error
+        templates = DefaultItemTemplate.query.order_by(DefaultItemTemplate.id.asc()).all()
+        tokens = default_name_tokens(name)
+        for template in templates:
+            if template.name.casefold() == name.casefold() or (
+                tokens and tokens == default_name_tokens(template.name)
+            ):
+                if item.photo_url and not template.photo_url:
+                    template.photo_url = item.photo_url
+                    record_audit('default_item.photo_added', 'default_item',
+                                 f'Added photo to default {template.name}.',
+                                 actor=current_user, target_id=template.id)
+                    db.session.commit()
+                return jsonify(status='exists', default={'id': template.id, 'name': template.name})
+        candidates = sorted(
+            [(default_name_similarity(name, template.name), template) for template in templates],
+            key=lambda match: (-match[0], match[1].id),
+        )
+        matches = [{'id': template.id, 'name': template.name}
+                   for score, template in candidates if score >= 0.8][:5]
+        if matches and not data.get('add_anyway', False):
+            return jsonify(status='possible_matches', matches=matches)
+        store = db.session.get(Store, item.store_id) if item.store_id else None
+        template = create_and_distribute_default_item(
+            name=name, quantity=item.quantity, unit=item.unit, category=item.category,
+            photo_url=item.photo_url,
+            sort_order=0, store_template_id=store.template_store_id if store else None,
+        )
+        db.session.commit()
+        return jsonify(status='created', default={'id': template.id, 'name': template.name}), 201
+
+    @app.route('/api/items/<int:item_id>/use-default', methods=['POST'])
+    @login_required
+    def api_item_use_default(item_id):
+        data, error = get_json_body()
+        if error:
+            return error
+        if type(data.get('version')) is not int or type(data.get('default_id')) is not int:
+            return error_response('version and default_id must be integers', 400)
+        lock_default_items()
+        template = db.get_or_404(DefaultItemTemplate, data['default_id'])
+        household = get_or_create_household_for_user(current_user)
+        items = Item.query.filter(db.or_(
+            Item.household_id == household.id,
+            db.and_(Item.household_id.is_(None), Item.user_id == current_user.id),
+        )).order_by(Item.id.asc()).with_for_update().all()
+        source = next((item for item in items if item.id == item_id), None)
+        if source is None:
+            return error_response('item not found', 404)
+        if source.version != data['version']:
+            return error_response('Item changed. Check defaults again.', 409)
+        if (source.template_item_id != template.id and
+                default_name_tokens(source.name) != default_name_tokens(template.name) and
+                default_name_similarity(source.name, template.name) < 0.8):
+            return error_response('Default no longer matches. Check defaults again.', 409)
+        candidates = [item for item in items if item.id != source.id and (
+            item.template_item_id == template.id or
+            default_name_tokens(item.name) == default_name_tokens(template.name)
+        )]
+        candidates.sort(key=lambda item: (item.template_item_id != template.id, item.id))
+        target = candidates[0] if candidates else None
+        if target is not None:
+            if 'keep_item_id' not in data:
+                return jsonify(status='confirmation_required', item=serialize(target),
+                               default={'id': template.id, 'name': template.name})
+            if (type(data.get('keep_item_id')) is not int or
+                    type(data.get('keep_version')) is not int):
+                return error_response('keep_item_id and keep_version must be integers', 400)
+            if target.id != data['keep_item_id'] or target.version != data['keep_version']:
+                return error_response('Existing item changed. Check defaults again before combining items.', 409)
+            removed_id = source.id
+            db.session.delete(source)
+            record_audit('item.default_duplicate_removed', 'item',
+                         f'Used existing default {template.name}; removed duplicate {source.name}.',
+                         actor=current_user, target_id=target.id,
+                         details={'removed_item_id': removed_id, 'default_id': template.id})
+            db.session.commit()
+            return jsonify(status='combined', item=serialize(target), removed_item_id=removed_id,
+                           default={'id': template.id, 'name': template.name})
+        if 'keep_item_id' in data:
+            return error_response('Existing item is no longer available. Check defaults again.', 409)
+        source.name = template.name
+        source.template_item_id = template.id
+        source.version += 1
+        record_audit('item.default_used', 'item', f'Used default {template.name}.',
+                     actor=current_user, target_id=source.id, details={'default_id': template.id})
+        db.session.commit()
+        return jsonify(status='updated', item=serialize(source),
+                       default={'id': template.id, 'name': template.name})
 
     @app.route('/api/preferences/theme', methods=['PATCH'])
     @login_required

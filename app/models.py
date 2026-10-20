@@ -121,6 +121,7 @@ class DefaultItemTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     template_key = db.Column(db.String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
     name = db.Column(db.Text, nullable=False)
+    photo_url = db.Column(db.String(500), nullable=True)
     quantity = db.Column(db.Float, nullable=False, default=1)
     unit = db.Column(db.String(30), nullable=True)
     category = db.Column(db.String(60), nullable=True)

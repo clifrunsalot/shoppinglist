@@ -93,6 +93,30 @@ Administration and defaults
 - New users receive a copied personal grocery list and default stores when their account is approved or created by the CLI.
 - Users can edit their copied items and stores freely after approval.
 - Users can choose their own theme from the main grocery list UI. Administrators set only the default theme for new accounts.
+- Any signed-in user can select an item in the shopping view and choose **Add to default list**.
+  The app reports existing defaults by name, ignoring case, punctuation, and word order.
+  Close spelling matches are offered for review: choose an existing default, cancel, or explicitly add a distinct item.
+  Shared words allow broader spelling suggestions, such as **ice brick** versus **ice block**;
+  these still require your choice and are not automatically treated as duplicates.
+  This is spelling matching, not synonym detection. Choosing an existing default renames
+  and links your selected item while retaining its other details. If that default is already
+  in your household list, confirmation is required to remove the selected duplicate;
+  the existing item's details are kept unchanged. Other households are not modified.
+- Use **Settings > View Default Items** or **Add Item > From Defaults** to browse the
+  shared catalog. The catalog refreshes each time it opens, including additions from other users.
+- New contributions copy the saved name, quantity, unit, category, and associated default store
+  (when available), including the item's photo, but not price or checked state. As with admin-created defaults,
+  they are distributed to active, approved accounts and recorded in the audit log.
+- Default photos appear in the default catalog and are inherited when creating or importing
+  items from defaults. Existing personal photos are not overwritten on import. Removing or
+  replacing the original item's photo does not remove the saved default photo.
+  Adding an existing default again can fill its missing photo, but never replaces an existing default photo.
+- Photos are local files under `app/static/uploads/items`; database backups preserve their URLs,
+  not image contents. Back up and restore that directory alongside the database.
+- Tap an item's photo icon to select an image from your device's photo library or files.
+  To change an existing image, tap it and choose **Replace**. The picker does not force
+  camera capture; available library/camera options depend on the device and browser.
+  Supported images are JPG, PNG, and WebP, up to 5 MB.
 
 Cloud hosting
 

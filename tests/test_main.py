@@ -16,8 +16,319 @@ import app.main as main_module
 import pytest
 
 from app.db import db
-from app.main import parse_price
-from app.models import AppSetting, AuditLog, Item, Store, User
+from app.main import build_database_uri, default_name_similarity, default_name_tokens, parse_price
+from app.models import AppSetting, AuditLog, DefaultItemTemplate, DefaultStoreTemplate, HouseholdMember, Item, Store, User
+
+
+@pytest.mark.parametrize(
+    ('left', 'right', 'expected'),
+    [
+        ('Brocolli', 'Broccoli', True),
+        ('Beans Gren', 'Green Beans', True),
+        ('ice brick', 'ice block', True),
+        ('block ice', 'ice brick', True),
+        ('Milk', 'Almond Milk', False),
+        ('2% Milk', '1% Milk', False),
+        ('1% Milk', '1 Milk', False),
+        ('Cat', 'Oat', False),
+        ('Fresh Apples', 'Dried Apples', False),
+        ('BrandA Milk', 'BrandB Milk', True),
+    ],
+)
+def test_default_name_spelling_candidates(left, right, expected):
+    assert (default_name_similarity(left, right) >= 0.8) is expected
+
+
+def test_default_name_tokens_ignore_case_punctuation_and_order():
+    assert default_name_tokens('  BEANS, green! ') == default_name_tokens('Green Beans')
+    assert default_name_tokens('1% Milk') != default_name_tokens('1 Milk')
+
+
+def test_item_contribution_copies_fields_and_distributes(auth_client, auth_user, create_user, app):
+    recipient = create_user('recipient@example.com')
+    with app.app_context():
+        store_template = DefaultStoreTemplate(name='Contribution Market')
+        db.session.add(store_template)
+        db.session.flush()
+        store = Store(name=store_template.name, template_store_id=store_template.id, user_id=auth_user['id'])
+        db.session.add(store)
+        db.session.flush()
+        item = Item(name='Baby Spinach', user_id=auth_user['id'], quantity=3, unit='bag',
+                    category='Produce', store_id=store.id, price=Decimal('4.50'),
+                    checked=True, photo_url='/static/test.jpg')
+        db.session.add(item)
+        db.session.commit()
+        item_id, store_template_id = item.id, store_template.id
+    response = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1})
+    assert response.status_code == 201
+    result = response.get_json()
+    assert result['status'] == 'created'
+    assert result['default']['name'] == 'Baby Spinach'
+    with app.app_context():
+        template = db.session.get(DefaultItemTemplate, result['default']['id'])
+        assert (template.quantity, template.unit, template.category, template.store_template_id) == (
+            3, 'bag', 'Produce', store_template_id,
+        )
+        copied = Item.query.filter_by(user_id=recipient['id'], template_item_id=template.id).one()
+        assert copied.price == Decimal('0.00')
+        assert copied.checked is False
+        assert copied.photo_url == '/static/test.jpg'
+        original = db.session.get(Item, item_id)
+        assert (original.name, original.price, original.checked, original.photo_url) == (
+            'Baby Spinach', Decimal('4.50'), True, '/static/test.jpg',
+        )
+        assert AuditLog.query.filter_by(action='default_item.created', actor_user_id=auth_user['id']).count() == 1
+    again = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1, 'add_anyway': True})
+    assert again.status_code == 200
+    assert again.get_json() == {'status': 'exists', 'default': result['default']}
+
+
+@pytest.mark.parametrize('name', ['Green Beans', 'GREEN BEANS', ' Beans, green! '])
+def test_item_contribution_reports_canonical_default(auth_client, auth_user, app, name):
+    with app.app_context():
+        template = DefaultItemTemplate(name='Green Beans')
+        item = Item(name=name, user_id=auth_user['id'])
+        db.session.add_all([template, item])
+        db.session.commit()
+        item_id, template_id = item.id, template.id
+    response = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1})
+    assert response.status_code == 200
+    assert response.get_json() == {'status': 'exists', 'default': {'id': template_id, 'name': 'Green Beans'}}
+    with app.app_context():
+        assert DefaultItemTemplate.query.count() == 1
+
+
+@pytest.mark.parametrize(
+    ('default_name', 'item_name'),
+    [('Broccoli', 'Brocolli'), ('ice block', 'ice brick'), ('ice brick', 'block ice')],
+)
+def test_item_contribution_suggestions_and_override(auth_client, auth_user, app, default_name, item_name):
+    with app.app_context():
+        template = DefaultItemTemplate(name=default_name)
+        item = Item(name=item_name, user_id=auth_user['id'])
+        db.session.add_all([template, item])
+        db.session.commit()
+        item_id, template_id = item.id, template.id
+    url = f'/api/items/{item_id}/add-to-defaults'
+    response = auth_client.post(url, json={'version': 1})
+    assert response.status_code == 200
+    assert response.get_json() == {'status': 'possible_matches', 'matches': [{'id': template_id, 'name': default_name}]}
+    with app.app_context():
+        assert DefaultItemTemplate.query.count() == 1
+    response = auth_client.post(url, json={'version': 1, 'add_anyway': True})
+    assert response.status_code == 201
+    assert response.get_json()['default']['name'] == item_name
+    with app.app_context():
+        assert DefaultItemTemplate.query.count() == 2
+
+
+def test_item_contribution_returns_multiple_candidates_without_writing(auth_client, auth_user, app):
+    with app.app_context():
+        db.session.add_all([
+            DefaultItemTemplate(name='Green Beans'),
+            DefaultItemTemplate(name='Green Bean'),
+        ])
+        item = Item(name='Gren Beans', user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+    response = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1})
+    assert response.status_code == 200
+    result = response.get_json()
+    assert result['status'] == 'possible_matches'
+    assert [match['name'] for match in result['matches']] == ['Green Beans', 'Green Bean']
+    with app.app_context():
+        assert DefaultItemTemplate.query.count() == 2
+        assert AuditLog.query.filter_by(action='default_item.created').count() == 0
+
+
+def test_item_contribution_scope_and_validation(auth_client, auth_user, create_user, app):
+    other = create_user('other-contributor@example.com')
+    with app.app_context():
+        item = Item(name='Private item', user_id=other['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+    url = f'/api/items/{item_id}/add-to-defaults'
+    assert auth_client.post(url, json={'version': 1}).status_code == 404
+    assert auth_client.post('/api/items/999999/add-to-defaults', json={'version': 1}).status_code == 404
+    with app.app_context():
+        item = db.session.get(Item, item_id)
+        item.user_id = auth_user['id']
+        db.session.commit()
+    assert auth_client.post(url, json={'version': 0}).status_code == 409
+    for payload in ({}, {'version': True}, {'version': 1, 'add_anyway': 'true'}):
+        assert auth_client.post(url, json=payload).status_code == 400
+    assert auth_client.post(url, data='bad').status_code == 415
+    with app.app_context():
+        assert DefaultItemTemplate.query.count() == 0
+
+
+def test_item_contribution_requires_login(client):
+    response = client.post('/api/items/1/add-to-defaults', json={'version': 1})
+    assert response.status_code == 401
+    assert response.get_json() == {'error': 'authentication required'}
+
+
+def test_default_photo_survives_source_removal_and_is_inherited(
+    auth_client, auth_user, app, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(app, 'static_folder', str(tmp_path))
+    monkeypatch.setitem(app.config, 'UPLOAD_FOLDER', str(tmp_path / 'uploads' / 'items'))
+    with app.app_context():
+        item = Item(name='Photo Default', user_id=auth_user['id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+    uploaded = auth_client.post(
+        f'/api/items/{item_id}/photo',
+        data={'photo': (io.BytesIO(b'photo-content'), 'default.jpg')},
+        content_type='multipart/form-data',
+    ).get_json()
+    response = auth_client.post(f'/api/items/{item_id}/add-to-defaults',
+                                json={'version': uploaded['version']})
+    assert response.status_code == 201
+    template_id = response.get_json()['default']['id']
+    photo_url = uploaded['photo_url']
+    catalog = auth_client.get('/api/default-items').get_json()
+    assert next(item for item in catalog if item['id'] == template_id)['photo_url'] == photo_url
+    replaced = auth_client.post(
+        f'/api/items/{item_id}/photo',
+        data={'photo': (io.BytesIO(b'replacement-content'), 'replacement.jpg')},
+        content_type='multipart/form-data',
+    )
+    assert replaced.status_code == 200
+    assert replaced.get_json()['photo_url'] != photo_url
+    assert auth_client.get(photo_url).data == b'photo-content'
+    assert auth_client.delete(f'/api/items/{item_id}/photo').status_code == 200
+    assert auth_client.get(photo_url).data == b'photo-content'
+    assert auth_client.delete(f'/api/items/{item_id}').status_code == 204
+    created = auth_client.post('/api/items', json={
+        'name': 'Photo Default', 'template_item_id': template_id,
+    })
+    assert created.status_code == 201
+    assert created.get_json()['photo_url'] == photo_url
+    new_id = created.get_json()['id']
+    assert auth_client.delete(f'/api/items/{new_id}/photo').status_code == 200
+    assert auth_client.get(photo_url).data == b'photo-content'
+    assert auth_client.delete(f'/api/items/{new_id}').status_code == 204
+    assert auth_client.post('/api/account/import-default-items').status_code == 200
+    with app.app_context():
+        imported = Item.query.filter_by(user_id=auth_user['id'], template_item_id=template_id).one()
+        assert imported.photo_url == photo_url
+        imported.photo_url = '/static/personal.jpg'
+        db.session.commit()
+    assert auth_client.post('/api/account/import-default-items').status_code == 200
+    with app.app_context():
+        assert Item.query.filter_by(user_id=auth_user['id'], template_item_id=template_id).one().photo_url == '/static/personal.jpg'
+
+
+def test_existing_default_photo_can_be_filled_but_not_replaced(auth_client, auth_user, app):
+    with app.app_context():
+        template = DefaultItemTemplate(name='Photo Match')
+        item = Item(name='Photo Match', user_id=auth_user['id'], photo_url='/static/original.jpg')
+        db.session.add_all([template, item])
+        db.session.commit()
+        item_id, template_id = item.id, template.id
+    url = f'/api/items/{item_id}/add-to-defaults'
+    assert auth_client.post(url, json={'version': 1}).get_json()['status'] == 'exists'
+    with app.app_context():
+        assert db.session.get(DefaultItemTemplate, template_id).photo_url == '/static/original.jpg'
+        db.session.get(Item, item_id).photo_url = '/static/replacement.jpg'
+        db.session.commit()
+    assert auth_client.post(url, json={'version': 1}).status_code == 200
+    with app.app_context():
+        assert db.session.get(DefaultItemTemplate, template_id).photo_url == '/static/original.jpg'
+
+
+def test_use_default_preserves_existing_item_requires_confirmation(auth_client, auth_user, app):
+    with app.app_context():
+        template = DefaultItemTemplate(name='ice block')
+        db.session.add(template)
+        db.session.flush()
+        target = Item(name='ice block', user_id=auth_user['id'], template_item_id=template.id,
+                      quantity=7, price=Decimal('3.50'), checked=True)
+        source = Item(name='ice brick', user_id=auth_user['id'], quantity=2)
+        db.session.add_all([target, source])
+        db.session.commit()
+        target_id, source_id, template_id = target.id, source.id, template.id
+    url = f'/api/items/{source_id}/use-default'
+    body = {'version': 1, 'default_id': template_id}
+    response = auth_client.post(url, json=body)
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'confirmation_required'
+    with app.app_context():
+        assert db.session.get(Item, source_id) is not None
+    assert auth_client.post(url, json={**body, 'keep_item_id': target_id, 'keep_version': 0}).status_code == 409
+    response = auth_client.post(url, json={**body, 'keep_item_id': target_id, 'keep_version': 1})
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'combined'
+    assert response.get_json()['removed_item_id'] == source_id
+    with app.app_context():
+        assert db.session.get(Item, source_id) is None
+        kept = db.session.get(Item, target_id)
+        assert (kept.quantity, kept.price, kept.checked, kept.version) == (7, Decimal('3.50'), True, 1)
+
+
+def test_use_default_renames_and_links_without_overwriting_details(auth_client, auth_user, app):
+    with app.app_context():
+        template = DefaultItemTemplate(name='ice block')
+        source = Item(name='ice brick', user_id=auth_user['id'], quantity=4, unit='bag')
+        db.session.add_all([template, source])
+        db.session.commit()
+        source_id, template_id = source.id, template.id
+    response = auth_client.post(f'/api/items/{source_id}/use-default',
+                                json={'version': 1, 'default_id': template_id})
+    assert response.status_code == 200
+    assert response.get_json()['status'] == 'updated'
+    with app.app_context():
+        kept = db.session.get(Item, source_id)
+        assert (kept.name, kept.template_item_id, kept.quantity, kept.unit, kept.version) == (
+            'ice block', template_id, 4, 'bag', 2,
+        )
+
+
+def test_use_default_rejects_private_items_and_unrelated_defaults(auth_client, create_user, auth_user, app):
+    other = create_user('private-default-user@example.com')
+    with app.app_context():
+        template = DefaultItemTemplate(name='ice block')
+        source = Item(name='ice brick', user_id=other['id'])
+        unrelated = Item(name='Bananas', user_id=auth_user['id'])
+        db.session.add_all([template, source, unrelated])
+        db.session.commit()
+        source_id, unrelated_id, template_id = source.id, unrelated.id, template.id
+    body = {'version': 1, 'default_id': template_id}
+    assert auth_client.post(f'/api/items/{source_id}/use-default', json=body).status_code == 404
+    assert auth_client.post(f'/api/items/{unrelated_id}/use-default', json=body).status_code == 409
+
+
+def test_item_contribution_accessible_to_household_member(auth_client, auth_user, create_user, create_household, app):
+    owner = create_user('catalog-owner@example.com')
+    household = create_household(owner['id'])
+    with app.app_context():
+        db.session.add(HouseholdMember(household_id=household['household_id'], user_id=auth_user['id']))
+        item = Item(name='Shared Contribution', user_id=owner['id'], household_id=household['household_id'])
+        db.session.add(item)
+        db.session.commit()
+        item_id = item.id
+    response = auth_client.post(f'/api/items/{item_id}/add-to-defaults', json={'version': 1})
+    assert response.status_code == 201
+
+
+@pytest.mark.parametrize(
+    ('database_url', 'expected'),
+    [
+        ('postgres://user:pass@db/appdb', 'postgresql+psycopg2://user:pass@db/appdb'),
+        ('postgresql://user:pass@db/appdb', 'postgresql+psycopg2://user:pass@db/appdb'),
+        ('postgresql+psycopg://user:pass@db/appdb', 'postgresql+psycopg2://user:pass@db/appdb'),
+        ('postgresql+psycopg2://user:pass@db/appdb', 'postgresql+psycopg2://user:pass@db/appdb'),
+    ],
+)
+def test_build_database_uri_uses_installed_postgres_driver(monkeypatch, database_url, expected):
+    monkeypatch.setenv('DATABASE_URL', database_url)
+
+    assert build_database_uri() == expected
+
 
 def test_admin_post_form_rejects_without_csrf(admin_client, app):
     # Verify the admin page includes CSRF token hidden inputs in its forms,
@@ -462,7 +773,8 @@ def test_default_items_api_returns_sorted_templates(auth_client, auth_user, app)
     assert data[0]['category'] == 'Produce'
     assert data[0]['store_template_id'] == data[0]['store_template_id']  # value present
     assert data[1]['name'] == 'Zucchini'
-    assert set(data[0].keys()) == {'id', 'name', 'quantity', 'unit', 'category', 'store_template_id'}
+    assert set(data[0].keys()) == {'id', 'name', 'quantity', 'unit', 'category', 'store_template_id', 'photo_url'}
+    assert data[0]['photo_url'] is None
 
 
 def test_default_items_api_returns_empty_list_when_no_templates(auth_client):

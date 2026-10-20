@@ -497,6 +497,9 @@
                     <div class="min-w-0 flex-1">
                       <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <button type="button" data-testid="default-item-open-{{ item.id }}" data-default-item-open data-item-id="{{ item.id }}" class="min-w-0 flex-1 text-left">
+                          {% if item.photo_url %}
+                          <img src="{{ item.photo_url }}" alt="{{ item.name }}" class="mb-2 h-16 w-16 rounded-xl object-cover" loading="lazy" />
+                          {% endif %}
                           <div class="truncate text-base font-semibold text-slate-900">{{ item.name }}</div>
                           <div class="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                             <span class="rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600">Qty {{ item.quantity }}</span>

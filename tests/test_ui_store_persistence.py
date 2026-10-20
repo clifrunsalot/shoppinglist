@@ -17,6 +17,215 @@ def open_settings(page):
     page.get_by_role('heading', name='Settings').wait_for()
 
 
+@pytest.mark.parametrize('width', [390, 1280])
+def test_item_photo_picker_allows_library_selection_and_replacement(
+    browser_page, live_server, seeded_store_persistence_data, app, tmp_path, monkeypatch, width,
+):
+    import base64
+
+    expect = pytest.importorskip('playwright.sync_api').expect
+    monkeypatch.setattr(app, 'static_folder', str(tmp_path))
+    monkeypatch.setitem(app.config, 'UPLOAD_FOLDER', str(tmp_path / 'uploads' / 'items'))
+    page = browser_page
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    item_id = seeded_store_persistence_data['item_ids']['apples']
+    row = page.get_by_test_id(f'item-row-{item_id}')
+    picker = row.locator('input[type="file"]')
+    assert picker.get_attribute('capture') is None
+    expect(picker).to_have_attribute('accept', 'image/jpeg,image/png,image/webp')
+    image = base64.b64decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aE1sAAAAASUVORK5CYII='
+    )
+    with page.expect_file_chooser() as chooser:
+        row.get_by_role('button', name='Add item photo', exact=True).click()
+    with page.expect_response(lambda response: '/photo' in response.url and response.request.method == 'POST') as uploaded:
+        chooser.value.set_files({'name': 'album.png', 'mimeType': 'image/png', 'buffer': image})
+    assert uploaded.value.status == 200
+    first_url = uploaded.value.json()['photo_url']
+    expect(row.locator('img')).to_have_attribute('src', first_url)
+    row.get_by_role('button', name='Update item photo', exact=True).click()
+    with page.expect_file_chooser() as chooser:
+        page.get_by_test_id('photo-preview-replace').click()
+    with page.expect_response(lambda response: '/photo' in response.url and response.request.method == 'POST') as replaced:
+        chooser.value.set_files({'name': 'another-album-photo.png', 'mimeType': 'image/png', 'buffer': image})
+    assert replaced.value.status == 200
+    assert replaced.value.json()['photo_url'] != first_url
+    expect(row.locator('img')).to_have_attribute('src', replaced.value.json()['photo_url'])
+
+
+@pytest.mark.parametrize('width', [390, 1280])
+def test_default_catalog_refreshes_after_contribution(
+    browser_page, live_server, seeded_store_persistence_data, app, width,
+):
+    expect = pytest.importorskip('playwright.sync_api').expect
+    with app.app_context():
+        db.session.add(DefaultItemTemplate(name='Existing Default'))
+        db.session.commit()
+    page = browser_page
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    page.get_by_test_id('open-add-panel').click()
+    page.get_by_test_id('add-tab-defaults').click()
+    expect(page.get_by_role('button', name='Existing Default', exact=False)).to_be_visible()
+    page.get_by_test_id('panel-close').click()
+    page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}").click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-name-input').fill('ice block')
+    page.get_by_test_id('add-to-defaults').click()
+    expect(page.get_by_test_id('default-contribution-message')).to_have_text(
+        '"ice block" was added to the default list.'
+    )
+    page.get_by_test_id('panel-close').click()
+    page.get_by_test_id('open-add-panel').click()
+    page.get_by_test_id('add-tab-defaults').click()
+    expect(page.get_by_role('button', name='ice block', exact=False)).to_be_visible()
+    page.get_by_test_id('panel-close').click()
+    open_settings(page)
+    page.get_by_test_id('settings-view-default-items').click()
+    expect(page.get_by_role('button', name='ice block', exact=False)).to_be_visible()
+    page.get_by_test_id('panel-close').click()
+    with app.app_context():
+        db.session.add(DefaultItemTemplate(name='ice brick'))
+        db.session.commit()
+    open_settings(page)
+    page.get_by_test_id('settings-view-default-items').click()
+    expect(page.get_by_role('button', name='ice brick', exact=False)).to_be_visible()
+
+
+@pytest.mark.parametrize('width', [390, 1280])
+def test_selected_item_contribution_saves_edits_and_reports_existing(
+    browser_page, live_server, seeded_store_persistence_data, app, width,
+):
+    expect = pytest.importorskip('playwright.sync_api').expect
+    page = browser_page
+    photo_url = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    with app.app_context():
+        source = db.session.get(Item, seeded_store_persistence_data['item_ids']['apples'])
+        source.photo_url = photo_url
+        db.session.commit()
+    page.set_viewport_size({'width': width, 'height': 900})
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}").click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-name-input').fill('Fresh Basil')
+    page.get_by_test_id('add-to-defaults').click()
+    message = page.get_by_test_id('default-contribution-message')
+    expect(message).to_have_text('"Fresh Basil" was added to the default list.')
+    page.get_by_test_id('add-to-defaults').click()
+    expect(message).to_have_text('Already in the default list as "Fresh Basil".')
+    with app.app_context():
+        assert DefaultItemTemplate.query.filter_by(name='Fresh Basil').count() == 1
+    page.get_by_test_id('panel-close').click()
+    open_settings(page)
+    page.get_by_test_id('settings-view-default-items').click()
+    expect(page.get_by_test_id('default-item-photo')).to_have_attribute('src', photo_url)
+    expect(page.get_by_test_id('default-item-photo')).to_be_visible()
+    assert page.get_by_test_id('default-item-photo').evaluate('(img) => img.complete && img.naturalWidth > 0')
+
+
+@pytest.mark.parametrize('add_anyway', [False, True])
+@pytest.mark.parametrize('default_name,item_name', [('Broccoli', 'Brocolli'), ('ice block', 'ice brick')])
+def test_selected_item_contribution_spelling_choices(
+    browser_page, live_server, seeded_store_persistence_data, app, add_anyway, default_name, item_name,
+):
+    expect = pytest.importorskip('playwright.sync_api').expect
+    with app.app_context():
+        db.session.add(DefaultItemTemplate(name=default_name))
+        db.session.commit()
+    page = browser_page
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    page.get_by_test_id(f"item-row-{seeded_store_persistence_data['item_ids']['apples']}").click()
+    open_detail_panel(page)
+    page.get_by_test_id('detail-name-input').fill(item_name)
+    page.get_by_test_id('add-to-defaults').click()
+    expect(page.get_by_test_id('default-contribution-matches')).to_be_visible()
+    if add_anyway:
+        page.get_by_test_id('default-contribution-add-anyway').click()
+        expect(page.get_by_test_id('default-contribution-message')).to_have_text(
+            f'"{item_name}" was added to the default list.'
+        )
+    else:
+        page.get_by_role('button', name=f'Use existing default: {default_name}', exact=True).click()
+        expect(page.get_by_test_id('default-contribution-message')).to_contain_text(
+            f'Now using the default name "{default_name}".'
+        )
+    with app.app_context():
+        assert DefaultItemTemplate.query.filter_by(name=item_name).count() == int(add_anyway)
+
+
+@pytest.mark.parametrize('accept', [False, True])
+def test_use_default_confirms_duplicate_removal(
+    browser_page, live_server, seeded_store_persistence_data, app, accept,
+):
+    expect = pytest.importorskip('playwright.sync_api').expect
+    source_id = seeded_store_persistence_data['item_ids']['apples']
+    with app.app_context():
+        template = DefaultItemTemplate(name='ice block')
+        db.session.add(template)
+        db.session.flush()
+        source = db.session.get(Item, source_id)
+        source.name = 'ice brick'
+        target = Item(name='ice block', user_id=source.user_id, quantity=7,
+                      unit='bag', template_item_id=template.id)
+        db.session.add(target)
+        db.session.commit()
+        target_id = target.id
+    page = browser_page
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    page.get_by_test_id(f'item-row-{source_id}').click()
+    open_detail_panel(page)
+    page.get_by_test_id('add-to-defaults').click()
+    page.once('dialog', lambda dialog: dialog.accept() if accept else dialog.dismiss())
+    page.get_by_role('button', name='Use existing default: ice block', exact=True).click()
+    if accept:
+        expect(page.get_by_test_id('default-contribution-message')).to_contain_text('removed the duplicate')
+    else:
+        expect(page.get_by_test_id('default-contribution-matches')).to_be_visible()
+        expect(page.get_by_test_id('add-to-defaults')).to_be_enabled()
+    with app.app_context():
+        assert (db.session.get(Item, source_id) is None) is accept
+        assert db.session.get(Item, target_id).quantity == 7
+
+
+def test_selected_item_contribution_surfaces_request_failure(
+    browser_page, live_server, seeded_store_persistence_data,
+):
+    expect = pytest.importorskip('playwright.sync_api').expect
+    page = browser_page
+    page.goto(f'{live_server}/login', wait_until='domcontentloaded')
+    page.locator('#email').fill(seeded_store_persistence_data['email'])
+    page.locator('#password').fill(seeded_store_persistence_data['password'])
+    page.get_by_role('button', name='Sign In').click()
+    item_id = seeded_store_persistence_data['item_ids']['apples']
+    page.get_by_test_id(f'item-row-{item_id}').click()
+    open_detail_panel(page)
+    page.route(
+        f'**/api/items/{item_id}/add-to-defaults',
+        lambda route: route.fulfill(status=409, json={'error': 'Item changed. Reload it before adding to defaults.'}),
+    )
+    page.get_by_test_id('add-to-defaults').click()
+    expect(page.get_by_test_id('default-contribution-message')).to_have_text(
+        'Item changed. Reload it before adding to defaults.'
+    )
+    expect(page.get_by_test_id('add-to-defaults')).to_be_enabled()
+
+
 @pytest.fixture
 def seeded_store_persistence_data(app, create_user):
     user = create_user('browser-user@example.com')
